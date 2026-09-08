@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>サポート - {{appName}}</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site">
+    <div class="inner">
+      <a class="brand" href="./">{{appName}}</a>
+      <nav>
+        <a href="./">トップ</a>
+        <a href="privacy.html">プライバシーポリシー</a>
+        <a href="terms.html">利用規約</a>
+        <a href="support.html">サポート</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <h1>サポート</h1>
+    <p>不具合の報告や要望は <a href="{{contactUrl}}">{{contactUrl}}</a> までお寄せください。報告の際は、入力した住所（差し支えない範囲で）、指定したレベル、表示されたエラーメッセージを添えていただけると助かります。</p>
+
+    <h2>よくある質問</h2>
+
+    <h3><code>#NAME?</code> と表示される</h3>
+    <p>アドオンがインストールされていないか、このスプレッドシートで有効になっていません。Marketplace からインストールし、スプレッドシートを開き直してください。共有相手の画面で <code>#NAME?</code> になる場合は、その相手もアドオンをインストールする必要があります。</p>
+
+    <h3><code>#ERROR!</code> と表示される</h3>
+    <p>セルにカーソルを合わせると理由が表示されます。「正規化レベルが不足しています」の場合、住所が指定したレベルまで判別できませんでした。第2引数を 3 に下げるか、<code>=IFERROR({{functionName}}(A2), "")</code> のように既定値を用意してください。</p>
+
+    <h3>東京の住所なのにレベル 8 にならない</h3>
+    <p>住所データ（アドレス・ベース・レジストリ）の整備状況により、住居表示が実施されている町丁目でも番地・号のデータが無いことがあります。東京都区部の一部や、皇居のような特殊な住所が該当します。町丁目までで良ければ 3 を指定してください。</p>
+
+    <h3>処理が遅い、<code>#TIMEOUT</code> が出る</h3>
+    <ul>
+      <li>1 セルずつ関数を書くより、<code>={{functionName}}(A2:A1000)</code> のように範囲で渡す方がはるかに速く、通信も少なくなります。</li>
+      <li>レベル 8 は町丁目ごとに追加の通信が必要です。町丁目まででよければ 3 を指定してください。</li>
+      <li>カスタム関数は 1 回 30 秒までです。<code>#TIMEOUT</code> が出た行は未処理なので、範囲を数百行ずつに分けてください。</li>
+    </ul>
+
+    <h3>住所データが更新されたのに結果が変わらない</h3>
+    <p>スプレッドシートはカスタム関数の結果を引数ごとにキャッシュします。セルを入力し直すか、引数（レベルなど）を変えると再計算されます。</p>
+
+    <h3>「住所データの取得に失敗しました」と出る</h3>
+    <p>住所データ配信サーバー（Geolonia）との通信に失敗しています。しばらく時間をおいて再度お試しください。Google Apps Script には 1 日あたりの外部通信回数の上限があり、超えた場合も同様のエラーになります。</p>
+
+    <h2>既知の制限</h2>
+    <ul>
+      <li>戻り値は正規化した住所の文字列だけです。緯度経度やレベルの数値は返しません。</li>
+      <li>範囲入力は 1 列または 1 行のみ対応しています。</li>
+      <li>住居表示地区で住居表示データが無い場合、地番データがあっても参照しません（元ライブラリの仕様）。</li>
+    </ul>
+  </main>
+
+  <footer class="site">
+    <div class="inner">
+      提供: {{publisher}} / 更新日 {{lastUpdated}}<br>
+      <a href="./">トップ</a> · <a href="privacy.html">プライバシーポリシー</a> · <a href="terms.html">利用規約</a>
+    </div>
+  </footer>
+</body>
+</html>

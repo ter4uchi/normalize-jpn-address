@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <base target="_blank">
+  <style>
+    :root { color-scheme: light; }
+    body {
+      margin: 0;
+      padding: 12px 14px 24px;
+      font: 13px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      color: #202124;
+      background: #fff;
+    }
+    h1 { font-size: 15px; margin: 0 0 4px; }
+    h2 { font-size: 13px; margin: 18px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #e0e0e0; }
+    p, ul, ol, table { margin: 0 0 8px; }
+    ul, ol { padding-left: 18px; }
+    li { margin-bottom: 3px; }
+    code, pre {
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #f1f3f4;
+      border-radius: 4px;
+    }
+    code { padding: 1px 4px; }
+    pre { padding: 6px 8px; overflow-x: auto; white-space: pre; }
+    table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    th, td { border: 1px solid #e0e0e0; padding: 3px 6px; text-align: left; vertical-align: top; }
+    th { background: #f8f9fa; font-weight: 600; white-space: nowrap; }
+    .muted { color: #5f6368; font-size: 12px; }
+    .note { background: #fff8e1; border-left: 3px solid #f9ab00; padding: 6px 8px; margin: 8px 0; }
+    a { color: #1a73e8; }
+    footer { margin-top: 20px; font-size: 11px; color: #5f6368; }
+  </style>
+</head>
+<body>
+  <h1>{{appName}}</h1>
+  <p class="muted">セルの住所を <a href="https://github.com/geolonia/normalize-japanese-addresses">Geolonia normalize-japanese-addresses</a> で正規化するカスタム関数 <code>{{functionName}}</code> を追加します。</p>
+
+  <h2>使い方</h2>
+  <pre>={{functionName}}("東京都千代田区千代田１−１", 8)
+={{functionName}}(A2)
+={{functionName}}(A2:A1000)</pre>
+  <ul>
+    <li>第1引数: 住所の文字列、または 1 列か 1 行のセル範囲。</li>
+    <li>第2引数（省略可）: 許容する最小の正規化レベル。省略時は 8。</li>
+    <li>範囲を渡すと結果は同じ形（列なら列）で下方向に展開されます。下のセルが埋まっていると <code>#REF!</code> になります。</li>
+    <li>まとめて処理したいときは範囲入力（<code>A2:A1000</code>）が最も速く、通信回数も少なくなります。</li>
+  </ul>
+
+  <h2>正規化レベル</h2>
+  <table>
+    <tr><th>値</th><th>意味</th></tr>
+    <tr><td>0</td><td>判別できなくても許容</td></tr>
+    <tr><td>1</td><td>都道府県まで</td></tr>
+    <tr><td>2</td><td>市区町村まで</td></tr>
+    <tr><td>3</td><td>大字・丁目まで</td></tr>
+    <tr><td>8</td><td>街区符号・住居番号、または地番まで（既定）</td></tr>
+  </table>
+  <ul>
+    <li>結果のレベルが指定値に満たない場合、単セル入力は <code>#ERROR!</code>（<code>IFERROR</code> で扱えます）、範囲入力はその行だけ <code>#LEVEL …</code> という文字列になります。</li>
+    <li>0〜3 を指定すると町丁目まで、8 を指定すると番地・号まで正規化を試みます。4〜7 は 8 と同じです。</li>
+  </ul>
+
+  <h2>出力</h2>
+  <p>都道府県 + 市区町村 + 町丁目 + 番地・号 に、正規化できなかった残り（建物名など）を続けた 1 つの文字列です。</p>
+  <pre>岩手県盛岡市内丸10-1
+東京都新宿区西新宿二丁目8-1 都庁第一本庁舎</pre>
+
+  <h2>注意</h2>
+  <div class="note">1 回の呼び出しは 30 秒までです。大量の住所は、レベル 3 を指定するか、範囲を数百行ずつに分けてください。<code>#TIMEOUT</code> が出た行は未処理です。</div>
+  <ul>
+    <li>データの整備状況により、住居表示が実施されている町丁目でもレベル 8 にならない住所があります（東京都区部の一部など）。</li>
+    <li>結果はスプレッドシート側で引数ごとにキャッシュされ、住所データが更新されても自動では再計算されません。</li>
+    <li>住所データは Geolonia のサーバー（{{apiHost}}）から取得します。セルの住所文字列そのものは送信しません。詳細は<a href="{{siteUrl}}privacy.html">プライバシーポリシー</a>を参照してください。</li>
+  </ul>
+
+  <h2>リンク</h2>
+  <ul>
+    <li><a href="https://github.com/geolonia/normalize-japanese-addresses">normalize-japanese-addresses（元ライブラリ）</a></li>
+    <li><a href="https://github.com/geolonia/japanese-addresses-v2">Geolonia 住所データ v2</a></li>
+    <li><a href="{{repoUrl}}">このアドオンのソースコード</a></li>
+    <li><a href="{{siteUrl}}">サイト</a> / <a href="{{siteUrl}}privacy.html">プライバシーポリシー</a> / <a href="{{siteUrl}}terms.html">利用規約</a> / <a href="{{siteUrl}}support.html">サポート</a></li>
+  </ul>
+
+  <h2>謝辞</h2>
+  <p>正規化処理は <a href="https://geolonia.com/">Geolonia Inc.</a> が MIT ライセンスで公開している normalize-japanese-addresses をそのまま利用しています。住所データは Geolonia 住所データ v2 で、デジタル庁「アドレス・ベース・レジストリ」を元に Geolonia が整備・配信しているものです。素晴らしいライブラリとデータを公開してくださっている Geolonia とデジタル庁に感謝します。</p>
+
+  <footer>
+    ライブラリ v{{libVersion}} / アドオン v{{addonVersion}} / 提供: {{publisher}}<br>
+    このアドオンは MIT ライセンスで公開されています。
+  </footer>
+</body>
+</html>

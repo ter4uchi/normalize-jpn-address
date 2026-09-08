@@ -1,0 +1,34 @@
+{
+  "name": "normalize-jpn-address",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Google Sheets add-on: NORMALZE_JPN_ADDRESS() custom function backed by @geolonia/normalize-japanese-addresses",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "push": "npm run build && clasp push",
+    "open": "clasp open",
+    "logs": "clasp logs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "nja": {
+    "apiEndpoint": "https://japanese-addresses-v2.geoloniamaps.com/api/ja",
+    "globalName": "NJA"
+  },
+  "dependencies": {
+    "@geolonia/normalize-japanese-addresses": "3.1.3"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@google/clasp": "^2.5.0",
+    "@types/google-apps-script": "^1.0.97",
+    "@types/papaparse": "^5.3.15",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
+  }
+}

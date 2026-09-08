@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{appName}}</title>
+  <meta name="description" content="Google スプレッドシートに、日本の住所を正規化するカスタム関数 {{functionName}} を追加するアドオンです。">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site">
+    <div class="inner">
+      <a class="brand" href="./">{{appName}}</a>
+      <nav>
+        <a href="./">トップ</a>
+        <a href="privacy.html">プライバシーポリシー</a>
+        <a href="terms.html">利用規約</a>
+        <a href="support.html">サポート</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <h1>{{appName}}</h1>
+    <p class="lead">Google スプレッドシートのセルに入った日本の住所を、<a href="https://github.com/geolonia/normalize-japanese-addresses">Geolonia normalize-japanese-addresses</a> で正規化するカスタム関数 <code>{{functionName}}</code> を追加するアドオンです。</p>
+    <p><a class="cta" href="{{marketplaceUrl}}">Google Workspace Marketplace で入手</a></p>
+
+    <h2>できること</h2>
+    <ul>
+      <li>表記ゆれのある住所（全角数字、「番地」「号」、漢数字の丁目、旧字体など）を、住所データに合わせた表記に揃えます。</li>
+      <li>都道府県、市区町村、町丁目、番地・号のどこまで判別できたかを「正規化レベル」で判定し、基準に満たない住所をエラーにできます。</li>
+      <li>1 セルずつでも、<code>A2:A1000</code> のような範囲でもまとめて処理できます。</li>
+    </ul>
+
+    <h2>インストール</h2>
+    <ol>
+      <li>Google Workspace Marketplace からアドオンをインストールします。</li>
+      <li>スプレッドシートを開き直すと、メニューの「拡張機能」に「{{appName}}」が追加されます。「使い方」を選ぶとサイドバーに説明が出ます。</li>
+      <li>セルに <code>={{functionName}}(A2)</code> のように入力します。</li>
+    </ol>
+    <div class="note">カスタム関数はアドオンをインストールしたユーザーの環境で動きます。共有相手がアドオンを入れていないと、その人の画面では <code>#NAME?</code> になります。</div>
+
+    <h2>使い方</h2>
+<pre><code>={{functionName}}("東京都千代田区千代田１−１", 8)
+={{functionName}}(A2)
+={{functionName}}(A2:A1000)</code></pre>
+    <h3>引数</h3>
+    <dl>
+      <dt>address（必須）</dt>
+      <dd>住所の文字列、または 1 列か 1 行のセル範囲。範囲を渡すと、結果は同じ形で展開されます。展開先のセルが埋まっていると <code>#REF!</code> になります。</dd>
+      <dt>level（省略可、既定 8）</dt>
+      <dd>許容する最小の正規化レベル。結果のレベルがこの値に満たない住所はエラーになります。</dd>
+    </dl>
+    <div class="table-wrap">
+      <table>
+        <tr><th>level</th><th>意味</th></tr>
+        <tr><td>0</td><td>判別できなくても許容する</td></tr>
+        <tr><td>1</td><td>都道府県まで判別できた</td></tr>
+        <tr><td>2</td><td>市区町村まで判別できた</td></tr>
+        <tr><td>3</td><td>大字・丁目まで判別できた</td></tr>
+        <tr><td>8</td><td>住居表示の街区符号・住居番号、または地番まで判別できた（既定）</td></tr>
+      </table>
+    </div>
+    <ul>
+      <li>0〜3 を指定した場合は町丁目まで、8 を指定した場合は番地・号まで正規化を試みます。4〜7 は 8 と同じ扱いです。</li>
+      <li>レベル 3 までは市区町村ごとに 1 回の通信で済むため高速です。レベル 8 は町丁目ごとに追加の通信が必要です。</li>
+    </ul>
+
+    <h3>結果</h3>
+    <p>都道府県 + 市区町村 + 町丁目 + 番地・号 に、正規化できなかった残り（建物名など）を続けた 1 つの文字列を返します。番地・号が確定した場合、残りは半角スペースで区切ります。</p>
+<pre><code>岩手県盛岡市内丸10-1                       ← レベル 8
+大阪府大阪市北区梅田一丁目1-3               ← レベル 8
+東京都新宿区西新宿二丁目8-1 都庁第一本庁舎   ← レベル 3（番地データなし）</code></pre>
+
+    <h3>エラー</h3>
+    <ul>
+      <li>単セル入力でレベルが足りない場合は <code>#ERROR!</code> になります。セルにカーソルを合わせると理由が表示されます。<code>IFERROR</code> で既定値に置き換えられます。</li>
+      <li>範囲入力では、その行だけが <code>#LEVEL 正規化レベルが不足しています（結果 3 &lt; 指定 8）</code> のような文字列になり、他の行は処理されます。</li>
+      <li>通信などに失敗した行は <code>#ERROR …</code>、制限時間内に処理できなかった行は <code>#TIMEOUT …</code> になります。</li>
+    </ul>
+
+    <h2>制限と注意</h2>
+    <ul>
+      <li>Google スプレッドシートの仕様で、カスタム関数 1 回の実行は 30 秒までです。大量の住所は、レベル 3 を指定するか、範囲を数百行ずつに分けてください。</li>
+      <li>住所データの整備状況により、住居表示が実施されている町丁目でもレベル 8 にならない住所があります（東京都区部の一部など）。この場合は 3 を指定してください。</li>
+      <li>結果はスプレッドシート側で引数ごとにキャッシュされます。住所データが更新されても、引数が同じままでは再計算されません。</li>
+      <li>住所データは Geolonia が無償で公開しているサーバーから取得しています。提供の停止や変更により本アドオンが動作しなくなる可能性があります。</li>
+    </ul>
+
+    <h2>プライバシー</h2>
+    <p>本アドオンは利用者の情報を収集・保存しません。カスタム関数に渡されたセルの値だけを処理し、住所データを Geolonia のサーバーから取得します。取得の際に住所文字列そのものは送信しませんが、判定した都道府県・市区町村・町丁目に対応するデータファイルの取得リクエストが送られます。詳しくは<a href="privacy.html">プライバシーポリシー</a>をご覧ください。</p>
+
+    <h2>謝辞</h2>
+    <p>正規化処理は <a href="https://geolonia.com/">Geolonia Inc.</a> が MIT ライセンスで公開している <a href="https://github.com/geolonia/normalize-japanese-addresses">normalize-japanese-addresses</a> をそのまま利用しています。住所データは <a href="https://github.com/geolonia/japanese-addresses-v2">Geolonia 住所データ v2</a> で、デジタル庁「<a href="https://www.digital.go.jp/policies/base_registry_address">アドレス・ベース・レジストリ</a>」を元に Geolonia が整備・配信しているものです。素晴らしいライブラリとデータを公開してくださっている Geolonia とデジタル庁に感謝します。</p>
+
+    <h2>ライセンスとソースコード</h2>
+    <p>本アドオンは MIT ライセンスで公開しています。ソースコードは <a href="{{repoUrl}}">{{repoUrl}}</a> にあります。同梱しているライブラリのライセンスはリポジトリ内の THIRD_PARTY_NOTICES.md を参照してください。</p>
+  </main>
+
+  <footer class="site">
+    <div class="inner">
+      提供: {{publisher}} / ライブラリ v{{libVersion}} / アドオン v{{addonVersion}} / 更新日 {{lastUpdated}}<br>
+      <a href="privacy.html">プライバシーポリシー</a> · <a href="terms.html">利用規約</a> · <a href="support.html">サポート</a>
+    </div>
+  </footer>
+</body>
+</html>
