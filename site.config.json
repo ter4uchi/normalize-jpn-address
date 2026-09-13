@@ -1,10 +1,13 @@
 {
   "appName": "日本の住所正規化関数",
-  "functionName": "NORMALZE_JPN_ADDRESS",
+  "functionName": "NORMALIZE_JPN_ADDRESS",
+  "legacyFunctionName": "NORMALZE_JPN_ADDRESS",
   "publisher": "TODO_PUBLISHER_NAME",
   "repoUrl": "https://github.com/TODO_OWNER/normalize-jpn-address",
   "siteUrl": "https://TODO_OWNER.github.io/normalize-jpn-address/",
   "contactUrl": "https://github.com/TODO_OWNER/normalize-jpn-address/issues",
   "marketplaceUrl": "https://workspace.google.com/marketplace/",
-  "lastUpdated": "2026-09-08"
+  "purchaseUrl": "https://TODO_STRIPE_PAYMENT_LINK.example/",
+  "price": "500円（税込）",
+  "lastUpdated": "2026-09-12"
 }

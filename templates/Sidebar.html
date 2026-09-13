@@ -29,33 +29,83 @@
     th { background: #f8f9fa; font-weight: 600; white-space: nowrap; }
     .muted { color: #5f6368; font-size: 12px; }
     .note { background: #fff8e1; border-left: 3px solid #f9ab00; padding: 6px 8px; margin: 8px 0; }
+    .license { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 10px; margin: 8px 0; }
+    .license.ok { background: #e6f4ea; border-color: #b7dfc2; }
+    .license.err { background: #fce8e6; border-color: #f5c2bd; }
+    .license input {
+      width: 100%; box-sizing: border-box; margin: 4px 0;
+      font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      padding: 5px 6px; border: 1px solid #dadce0; border-radius: 4px;
+    }
+    .license button {
+      font: 12px inherit; padding: 4px 10px; margin-right: 4px;
+      border: 1px solid #dadce0; border-radius: 4px; background: #fff; cursor: pointer;
+    }
+    .license button.primary { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+    .license button:disabled { opacity: .5; cursor: default; }
+    .status { font-size: 12px; margin: 2px 0 6px; }
+    .badge { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 10px; background: #e8f0fe; color: #1967d2; margin-left: 4px; vertical-align: middle; }
     a { color: #1a73e8; }
     footer { margin-top: 20px; font-size: 11px; color: #5f6368; }
   </style>
 </head>
 <body>
   <h1>{{appName}}</h1>
-  <p class="muted">セルの住所を <a href="https://github.com/geolonia/normalize-japanese-addresses">Geolonia normalize-japanese-addresses</a> で正規化するカスタム関数 <code>{{functionName}}</code> を追加します。</p>
+  <p class="muted">セルの住所を <a href="https://github.com/geolonia/normalize-japanese-addresses">Geolonia normalize-japanese-addresses</a> で正規化するカスタム関数を追加します。</p>
+
+  <h2>ライセンス</h2>
+  <div id="license" class="license">
+    <div id="license-status" class="status">確認中…</div>
+    <div id="license-form">
+      <input id="license-key" type="text" placeholder="NJA-XXXXX-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false">
+      <button id="license-save" class="primary" type="button">登録</button>
+      <button id="license-clear" type="button" hidden>削除</button>
+    </div>
+    <p class="muted" style="margin:6px 0 0">
+      番地・号までの正規化（レベル 8）と地図 URL・緯度経度の関数はライセンスキーが必要です（{{price}}、買い切り）。
+      町丁目までの正規化（レベル 3、既定）は無料です。
+      <a href="{{purchaseUrl}}">ライセンスキーを購入</a>
+    </p>
+  </div>
 
   <h2>使い方</h2>
-  <pre>={{functionName}}("東京都千代田区千代田１−１", 8)
-={{functionName}}(A2)
-={{functionName}}(A2:A1000)</pre>
+  <pre>={{functionName}}(A2)
+={{functionName}}(A2:A1000)
+={{functionName}}("東京都千代田区千代田１−１", 8)</pre>
   <ul>
     <li>第1引数: 住所の文字列、または 1 列か 1 行のセル範囲。</li>
-    <li>第2引数（省略可）: 許容する最小の正規化レベル。省略時は 8。</li>
+    <li>第2引数（省略可）: 許容する最小の正規化レベル。省略時は 3（町丁目まで）。番地・号まで確認したいときは 8<span class="badge">ライセンス</span>。</li>
     <li>範囲を渡すと結果は同じ形（列なら列）で下方向に展開されます。下のセルが埋まっていると <code>#REF!</code> になります。</li>
     <li>まとめて処理したいときは範囲入力（<code>A2:A1000</code>）が最も速く、通信回数も少なくなります。</li>
+    <li>旧名 <code>{{legacyFunctionName}}</code>（綴り違い）も同じ動作で残しています。</li>
+  </ul>
+
+  <h2>メニューから一括処理</h2>
+  <p>数式を使わずに、選択した住所をまとめて処理して<strong>値として</strong>書き込みます。住所が入った 1 列（例: <code>A2:A500</code>）を選択してから「拡張機能 › {{appName}}」のメニューを選びます。結果は選択した列の<strong>右隣</strong>に書き、既に値があれば上書きの確認が出ます。</p>
+  <ul>
+    <li><strong>選択範囲を正規化</strong>: 右隣の 2 列に「正規化した住所」「到達レベル」を書きます。しきい値は無く、できるところまで正規化します。ライセンスがあれば番地・号まで、無ければ町丁目まで試みます。</li>
+    <li><strong>選択範囲に地図リンクを付ける</strong><span class="badge">ライセンス</span>: 右隣の列に、クリックで Google マップが開く「地図」リンクを書きます。番地・号まで判別できなかった住所は「地図（概略）」（町丁目の代表点）になります。</li>
+    <li>1 回の実行は 6 分までです。100 行ごとに書き込むので、時間切れでも処理済みの行は残ります。残りを選択して再実行してください。</li>
+  </ul>
+
+  <h2>位置情報の関数<span class="badge">ライセンス</span></h2>
+  <pre>=HYPERLINK({{functionName}}_MAP(A2), "地図")
+={{functionName}}_LATLNG(A2)
+={{functionName}}_LATLNG(A2:A1000)</pre>
+  <ul>
+    <li><code>_MAP</code>: 住所の位置を開く Google マップの URL を返します。<code>HYPERLINK</code> で包むとクリックで開けます。</li>
+    <li><code>_LATLNG</code>: 緯度と経度を 2 列で返します。範囲入力では行ごとに 2 列に展開されます。</li>
+    <li>どちらも既定はレベル 8（番地・号の位置）です。番地のデータが無い住所はエラーになるので、町丁目の代表点でよければ第2引数に 3 を指定してください。</li>
   </ul>
 
   <h2>正規化レベル</h2>
   <table>
-    <tr><th>値</th><th>意味</th></tr>
-    <tr><td>0</td><td>判別できなくても許容</td></tr>
-    <tr><td>1</td><td>都道府県まで</td></tr>
-    <tr><td>2</td><td>市区町村まで</td></tr>
-    <tr><td>3</td><td>大字・丁目まで</td></tr>
-    <tr><td>8</td><td>街区符号・住居番号、または地番まで（既定）</td></tr>
+    <tr><th>値</th><th>意味</th><th></th></tr>
+    <tr><td>0</td><td>判別できなくても許容</td><td>無料</td></tr>
+    <tr><td>1</td><td>都道府県まで</td><td>無料</td></tr>
+    <tr><td>2</td><td>市区町村まで</td><td>無料</td></tr>
+    <tr><td>3</td><td>大字・丁目まで（既定）</td><td>無料</td></tr>
+    <tr><td>8</td><td>街区符号・住居番号、または地番まで</td><td>ライセンス</td></tr>
   </table>
   <ul>
     <li>結果のレベルが指定値に満たない場合、単セル入力は <code>#ERROR!</code>（<code>IFERROR</code> で扱えます）、範囲入力はその行だけ <code>#LEVEL …</code> という文字列になります。</li>
@@ -72,7 +122,7 @@
   <ul>
     <li>データの整備状況により、住居表示が実施されている町丁目でもレベル 8 にならない住所があります（東京都区部の一部など）。</li>
     <li>結果はスプレッドシート側で引数ごとにキャッシュされ、住所データが更新されても自動では再計算されません。</li>
-    <li>住所データは Geolonia のサーバー（{{apiHost}}）から取得します。セルの住所文字列そのものは送信しません。詳細は<a href="{{siteUrl}}privacy.html">プライバシーポリシー</a>を参照してください。</li>
+    <li>住所データは提供者の配信サーバー（{{apiHost}}）から取得します。セルの住所文字列そのものは送信しません。詳細は<a href="{{siteUrl}}privacy.html">プライバシーポリシー</a>を参照してください。</li>
   </ul>
 
   <h2>リンク</h2>
@@ -84,11 +134,65 @@
   </ul>
 
   <h2>謝辞</h2>
-  <p>正規化処理は <a href="https://geolonia.com/">Geolonia Inc.</a> が MIT ライセンスで公開している normalize-japanese-addresses をそのまま利用しています。住所データは Geolonia 住所データ v2 で、デジタル庁「アドレス・ベース・レジストリ」を元に Geolonia が整備・配信しているものです。素晴らしいライブラリとデータを公開してくださっている Geolonia とデジタル庁に感謝します。</p>
+  <p>正規化処理は <a href="https://geolonia.com/">Geolonia Inc.</a> が MIT ライセンスで公開している normalize-japanese-addresses をそのまま利用しています。住所データは Geolonia 住所データ v2（CC BY 4.0）で、「アドレス・ベース・レジストリ」（デジタル庁）をもとに株式会社 Geolonia が作成したものです。素晴らしいライブラリとデータを公開してくださっている Geolonia とデジタル庁に感謝します。</p>
 
   <footer>
     ライブラリ v{{libVersion}} / アドオン v{{addonVersion}} / 提供: {{publisher}}<br>
     このアドオンは MIT ライセンスで公開されています。
   </footer>
+
+  <script>
+    (function () {
+      var box = document.getElementById('license')
+      var status = document.getElementById('license-status')
+      var input = document.getElementById('license-key')
+      var save = document.getElementById('license-save')
+      var clear = document.getElementById('license-clear')
+
+      function render(s) {
+        box.className = 'license ' + (s.licensed ? 'ok' : '')
+        if (s.licensed) {
+          status.textContent = 'ライセンス登録済み: ' + s.maskedKey + (s.source === 'document' ? '（このスプレッドシート）' : '')
+          input.value = ''
+          input.placeholder = '別のキーに変更する場合は入力'
+          clear.hidden = false
+        } else {
+          status.textContent = 'ライセンス未登録（無料の範囲で利用中）'
+          clear.hidden = true
+        }
+      }
+      function fail(e) {
+        box.className = 'license err'
+        status.textContent = (e && e.message) ? e.message : String(e)
+        busy(false)
+      }
+      function busy(on) {
+        save.disabled = on
+        clear.disabled = on
+        input.disabled = on
+      }
+      function refresh() {
+        google.script.run.withSuccessHandler(function (s) { render(s); busy(false) }).withFailureHandler(fail).njaGetLicenseStatus()
+      }
+      save.addEventListener('click', function () {
+        var key = input.value.trim()
+        if (!key) { input.focus(); return }
+        busy(true)
+        status.textContent = '確認中…'
+        google.script.run.withSuccessHandler(function (s) { render(s); busy(false) }).withFailureHandler(fail).njaSetLicenseKey(key)
+      })
+      clear.addEventListener('click', function () {
+        busy(true)
+        google.script.run.withSuccessHandler(function (s) { render(s); busy(false) }).withFailureHandler(fail).njaClearLicenseKey()
+      })
+      input.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') save.click() })
+      if (typeof google !== 'undefined' && google.script) {
+        busy(true)
+        refresh()
+      } else {
+        status.textContent = 'ブラウザで直接開いています（Sheets 内でのみ動作します）'
+      }
+    })()
+  </script>
 </body>
 </html>

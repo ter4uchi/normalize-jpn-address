@@ -2,23 +2,30 @@
  * ビルド:
  *   1. esbuild で src/main-gas.ts をライブラリのソースごと IIFE（グローバル NJA）にまとめる
  *   2. Babel で async/await を取り除き、同期関数にする（scripts/deasync-plugin.mjs）
- *   3. gas/normalize-japanese-addresses.js に書き出す
- *   4. templates/ の {{token}} を site.config.json で埋めて gas/Sidebar.html と docs/ を生成する
- *   5. バンドルに含まれたパッケージのライセンスを THIRD_PARTY_NOTICES.md にまとめる
+ *   3. dist/ を作り直し、dist/normalize-japanese-addresses.js に書き出す
+ *   4. src/Code.ts の型注釈を取り除いて dist/Code.js に、src/appsscript.json を dist/ にコピーする
+ *   5. templates/ の {{token}} を site.config.json で埋めて dist/Sidebar.html と docs/ を生成する
+ *   6. バンドルに含まれたパッケージのライセンスを THIRD_PARTY_NOTICES.md にまとめる
+ *
+ * clasp push の rootDir は dist/（.clasp.json）。dist/ は毎回作り直すので、手で置いた
+ * ファイルは消える。push されるのは dist/ の 4 ファイルだけ。
  */
 import { build } from 'esbuild'
 import babel from '@babel/core'
+import ts from 'typescript'
 import {
   readFileSync,
   writeFileSync,
   mkdirSync,
   readdirSync,
-  existsSync,
+  rmSync,
+  copyFileSync,
   statSync,
 } from 'node:fs'
 import { dirname, join, resolve, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import deasyncPlugin, { countAsyncConstructs } from './deasync-plugin.mjs'
+import { readLicenseSecret } from './license-secret.mjs'
 
 const { transformAsync, parseSync, traverse } = babel
 
@@ -28,25 +35,47 @@ const readJson = (p) => JSON.parse(readFileSync(p, 'utf8'))
 
 const pkg = readJson(rel('package.json'))
 const site = readJson(rel('site.config.json'))
-const manifest = readJson(rel('gas/appsscript.json'))
+const manifest = readJson(rel('src/appsscript.json'))
 const libDir = rel('node_modules/@geolonia/normalize-japanese-addresses')
 const libPkg = readJson(join(libDir, 'package.json'))
 
+/** 既定の住所データ取得先（自前配信） */
 const API_ENDPOINT = pkg.nja.apiEndpoint
+/** Geolonia の公開 API。Script Properties での切り替え先として whitelist にも入れておく */
+const UPSTREAM_ENDPOINT = pkg.nja.upstreamEndpoint
 const GLOBAL_NAME = pkg.nja.globalName
-const OUT_BUNDLE = rel('gas/normalize-japanese-addresses.js')
+/** ライセンスキーの署名鍵（.license-secret。無ければ開発用） */
+const LICENSE = readLicenseSecret()
+if (LICENSE.isDev) {
+  console.warn(
+    '警告: .license-secret が無いので開発用の秘密鍵でビルドします（このビルドは公開しないこと）',
+  )
+}
+if (typeof site.purchaseUrl !== 'string' || !site.purchaseUrl.startsWith('https://')) {
+  throw new Error('site.config.json の purchaseUrl は https の URL にしてください')
+}
+/** clasp push の rootDir。毎回作り直す */
+const OUT_DIR = rel('dist')
+const OUT_BUNDLE = join(OUT_DIR, 'normalize-japanese-addresses.js')
+const OUT_CODE = join(OUT_DIR, 'Code.js')
 
 // ---------------------------------------------------------------------------
 // 0. 設定の整合性チェック
 // ---------------------------------------------------------------------------
-{
-  const origin = new URL(API_ENDPOINT).origin + '/'
+for (const [name, endpoint] of [
+  ['nja.apiEndpoint', API_ENDPOINT],
+  ['nja.upstreamEndpoint', UPSTREAM_ENDPOINT],
+]) {
+  if (typeof endpoint !== 'string' || !endpoint.startsWith('https://')) {
+    throw new Error(`package.json の ${name} が https の URL ではありません`)
+  }
+  const origin = new URL(endpoint).origin + '/'
   const whitelisted = (manifest.urlFetchWhitelist || []).some((prefix) =>
     origin.startsWith(prefix),
   )
   if (!whitelisted) {
     throw new Error(
-      `gas/appsscript.json の urlFetchWhitelist に ${origin} が含まれていません`,
+      `src/appsscript.json の urlFetchWhitelist に ${origin}（${name}）が含まれていません`,
     )
   }
 }
@@ -73,6 +102,10 @@ const esbuildResult = await build({
     __NJA_LIB_VERSION__: JSON.stringify(libPkg.version),
     __NJA_ADDON_VERSION__: JSON.stringify(pkg.version),
     __NJA_API_ENDPOINT__: JSON.stringify(API_ENDPOINT),
+    __NJA_UPSTREAM_ENDPOINT__: JSON.stringify(UPSTREAM_ENDPOINT),
+    __NJA_LICENSE_SECRET__: JSON.stringify(LICENSE.secret),
+    __NJA_LICENSE_SECRET_IS_DEV__: JSON.stringify(LICENSE.isDev),
+    __NJA_PURCHASE_URL__: JSON.stringify(site.purchaseUrl),
   },
 })
 const bundled = esbuildResult.outputFiles[0].text
@@ -128,11 +161,44 @@ const header = `/*
  * 詳細は THIRD_PARTY_NOTICES.md を参照。
  */
 `
-mkdirSync(dirname(OUT_BUNDLE), { recursive: true })
+rmSync(OUT_DIR, { recursive: true, force: true })
+mkdirSync(OUT_DIR, { recursive: true })
 writeFileSync(OUT_BUNDLE, header + transformed.code + '\n')
 
 // ---------------------------------------------------------------------------
-// 4. テンプレート
+// 4. Code.ts → Code.js（型注釈の除去のみ。型検査は `npm run typecheck`）とマニフェスト
+// ---------------------------------------------------------------------------
+{
+  const source = readFileSync(rel('src/Code.ts'), 'utf8')
+  const { outputText, diagnostics } = ts.transpileModule(source, {
+    fileName: 'Code.ts',
+    reportDiagnostics: true,
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2019,
+      module: ts.ModuleKind.ESNext,
+      removeComments: false, // @customfunction などの JSDoc を残す
+      newLine: ts.NewLineKind.LineFeed,
+    },
+  })
+  if (diagnostics && diagnostics.length > 0) {
+    const messages = diagnostics.map((d) =>
+      ts.flattenDiagnosticMessageText(d.messageText, '\n'),
+    )
+    throw new Error(`src/Code.ts の変換に失敗しました:\n${messages.join('\n')}`)
+  }
+  // Apps Script はトップレベル関数をそのまま公開する。モジュール構文が混ざると
+  // カスタム関数として認識されなくなるので、import/export は禁止する。
+  if (/^\s*(import|export)\b/m.test(outputText)) {
+    throw new Error(
+      'src/Code.ts に import/export があります。Code.ts はスクリプトとして書いてください',
+    )
+  }
+  writeFileSync(OUT_CODE, outputText)
+  copyFileSync(rel('src/appsscript.json'), join(OUT_DIR, 'appsscript.json'))
+}
+
+// ---------------------------------------------------------------------------
+// 5. テンプレート
 // ---------------------------------------------------------------------------
 const tokens = {
   ...site,
@@ -140,8 +206,10 @@ const tokens = {
   addonVersion: pkg.version,
   apiEndpoint: API_ENDPOINT,
   apiHost: new URL(API_ENDPOINT).host,
+  upstreamEndpoint: UPSTREAM_ENDPOINT,
+  upstreamHost: new URL(UPSTREAM_ENDPOINT).host,
 }
-renderTemplate(rel('templates/Sidebar.html'), rel('gas/Sidebar.html'), tokens)
+renderTemplate(rel('templates/Sidebar.html'), join(OUT_DIR, 'Sidebar.html'), tokens)
 mkdirSync(rel('docs'), { recursive: true })
 for (const file of readdirSync(rel('templates/site'))) {
   const src = rel(`templates/site/${file}`)
@@ -154,18 +222,21 @@ for (const file of readdirSync(rel('templates/site'))) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. サードパーティ表記
+// 6. サードパーティ表記
 // ---------------------------------------------------------------------------
 writeThirdPartyNotices(bundledPackages)
 
 // ---------------------------------------------------------------------------
 console.log(
   [
-    `bundle: gas/normalize-japanese-addresses.js (${kb(statSync(OUT_BUNDLE).size)} KB)`,
+    `bundle: dist/normalize-japanese-addresses.js (${kb(statSync(OUT_BUNDLE).size)} KB)`,
     `async removed: ${before.asyncFunctions} functions, ${before.awaits} awaits`,
+    `code: dist/Code.js (from src/Code.ts)`,
     `library: @geolonia/normalize-japanese-addresses@${libPkg.version}`,
     `endpoint: ${API_ENDPOINT}`,
-    `templates: gas/Sidebar.html, docs/`,
+    `license secret: ${LICENSE.isDev ? 'DEV (not for release)' : '.license-secret'}`,
+    `templates: dist/Sidebar.html, docs/`,
+    `push root: dist/ (${readdirSync(OUT_DIR).sort().join(', ')})`,
   ].join('\n'),
 )
 
