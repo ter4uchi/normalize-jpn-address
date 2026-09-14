@@ -5,3 +5,5 @@ node_modules/
 dist/
 # ライセンスキーの署名鍵（scripts/license-secret.mjs）。公開しない
 .license-secret
+# wrangler（Cloudflare Pages）のローカル状態
+.wrangler/

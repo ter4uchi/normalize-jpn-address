@@ -58,6 +58,9 @@ export function createUtilities() {
     base64Decode(text) {
       return toSignedBytes(Buffer.from(text, 'base64'))
     },
+    base64DecodeWebSafe(text) {
+      return toSignedBytes(Buffer.from(text, 'base64url'))
+    },
     computeDigest(algorithm, value, charset) {
       const name = String(algorithm).replace('_', '').toLowerCase()
       return toSignedBytes(createHash(name).update(value, 'utf8').digest())
@@ -322,6 +325,31 @@ export function createHtmlService() {
         setWidth: () => out,
       }
       return out
+    },
+  }
+}
+
+/**
+ * ScriptApp。getIdentityToken() が返す Google の ID トークン（JWT）を、指定した sub で偽造する。
+ * アドオン側は署名を検証せず payload の sub を読むだけなので、署名部分はダミーでよい。
+ * sub に null を渡すと、openid スコープが無い環境と同じく例外にする。
+ */
+export function createScriptApp({ sub = '123456789012345678901' } = {}) {
+  const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url')
+  return {
+    getIdentityToken() {
+      if (sub === null) {
+        throw new Error('Exception: Access denied: identity token requires the openid scope')
+      }
+      const header = b64url({ alg: 'RS256', kid: 'test', typ: 'JWT' })
+      const payload = b64url({
+        iss: 'https://accounts.google.com',
+        aud: 'test-client-id.apps.googleusercontent.com',
+        sub,
+        iat: 1700000000,
+        exp: 1700003600,
+      })
+      return `${header}.${payload}.c2lnbmF0dXJl`
     },
   }
 }

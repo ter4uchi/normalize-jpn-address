@@ -62,40 +62,34 @@
       <button id="license-clear" type="button" hidden>削除</button>
     </div>
     <p class="muted" style="margin:6px 0 0">
-      番地・号までの正規化（レベル 8）と地図 URL・緯度経度の関数はライセンスキーが必要です（{{price}}、買い切り）。
-      町丁目までの正規化（レベル 3、既定）は無料です。
-      <a href="{{purchaseUrl}}">ライセンスキーを購入</a>
+      メニューの「番地・号までの正規化」「地図リンク」「緯度経度」はライセンスキーが必要です（{{price}}、買い切り）。
+      カスタム関数（町丁目までの正規化）は無料です。
+      <a id="purchase-link" href="{{purchaseUrl}}">ライセンスキーを購入</a>
     </p>
+    <p class="muted" style="margin:6px 0 0">キーは購入した Google アカウント専用です。必ずこのサイドバーの購入リンクから購入してください（アカウントの照合に使う情報が付きます）。</p>
+    <p id="license-user" class="muted" style="margin:6px 0 0" hidden></p>
   </div>
 
-  <h2>使い方</h2>
+  <h2>使い方（カスタム関数）</h2>
   <pre>={{functionName}}(A2)
 ={{functionName}}(A2:A1000)
-={{functionName}}("東京都千代田区千代田１−１", 8)</pre>
+={{functionName}}("東京都千代田区千代田１−１", 2)</pre>
   <ul>
     <li>第1引数: 住所の文字列、または 1 列か 1 行のセル範囲。</li>
-    <li>第2引数（省略可）: 許容する最小の正規化レベル。省略時は 3（町丁目まで）。番地・号まで確認したいときは 8<span class="badge">ライセンス</span>。</li>
+    <li>第2引数（省略可）: 許容する最小の正規化レベル（0〜3）。省略時は 3（町丁目まで）。</li>
     <li>範囲を渡すと結果は同じ形（列なら列）で下方向に展開されます。下のセルが埋まっていると <code>#REF!</code> になります。</li>
     <li>まとめて処理したいときは範囲入力（<code>A2:A1000</code>）が最も速く、通信回数も少なくなります。</li>
+    <li>番地・号までの正規化は数式ではなく、下のメニュー「選択範囲を正規化」<span class="badge">ライセンス</span>で行います。</li>
     <li>旧名 <code>{{legacyFunctionName}}</code>（綴り違い）も同じ動作で残しています。</li>
   </ul>
 
   <h2>メニューから一括処理</h2>
   <p>数式を使わずに、選択した住所をまとめて処理して<strong>値として</strong>書き込みます。住所が入った 1 列（例: <code>A2:A500</code>）を選択してから「拡張機能 › {{appName}}」のメニューを選びます。結果は選択した列の<strong>右隣</strong>に書き、既に値があれば上書きの確認が出ます。</p>
   <ul>
-    <li><strong>選択範囲を正規化</strong>: 右隣の 2 列に「正規化した住所」「到達レベル」を書きます。しきい値は無く、できるところまで正規化します。ライセンスがあれば番地・号まで、無ければ町丁目まで試みます。</li>
+    <li><strong>選択範囲を正規化</strong>: 右隣の 2 列に「正規化した住所」「到達レベル」を書きます。しきい値は無く、できるところまで正規化します。ライセンスがあれば番地・号まで<span class="badge">ライセンス</span>、無ければ町丁目まで試みます。</li>
     <li><strong>選択範囲に地図リンクを付ける</strong><span class="badge">ライセンス</span>: 右隣の列に、クリックで Google マップが開く「地図」リンクを書きます。番地・号まで判別できなかった住所は「地図（概略）」（町丁目の代表点）になります。</li>
+    <li><strong>選択範囲に緯度経度を付ける</strong><span class="badge">ライセンス</span>: 右隣の 3 列に「緯度」「経度」「到達レベル」を書きます。レベル 8 なら番地・号の位置、3 なら町丁目の代表点です。</li>
     <li>1 回の実行は 6 分までです。100 行ごとに書き込むので、時間切れでも処理済みの行は残ります。残りを選択して再実行してください。</li>
-  </ul>
-
-  <h2>位置情報の関数<span class="badge">ライセンス</span></h2>
-  <pre>=HYPERLINK({{functionName}}_MAP(A2), "地図")
-={{functionName}}_LATLNG(A2)
-={{functionName}}_LATLNG(A2:A1000)</pre>
-  <ul>
-    <li><code>_MAP</code>: 住所の位置を開く Google マップの URL を返します。<code>HYPERLINK</code> で包むとクリックで開けます。</li>
-    <li><code>_LATLNG</code>: 緯度と経度を 2 列で返します。範囲入力では行ごとに 2 列に展開されます。</li>
-    <li>どちらも既定はレベル 8（番地・号の位置）です。番地のデータが無い住所はエラーになるので、町丁目の代表点でよければ第2引数に 3 を指定してください。</li>
   </ul>
 
   <h2>正規化レベル</h2>
@@ -105,11 +99,11 @@
     <tr><td>1</td><td>都道府県まで</td><td>無料</td></tr>
     <tr><td>2</td><td>市区町村まで</td><td>無料</td></tr>
     <tr><td>3</td><td>大字・丁目まで（既定）</td><td>無料</td></tr>
-    <tr><td>8</td><td>街区符号・住居番号、または地番まで</td><td>ライセンス</td></tr>
+    <tr><td>8</td><td>街区符号・住居番号、または地番まで</td><td>メニューのみ・ライセンス</td></tr>
   </table>
   <ul>
-    <li>結果のレベルが指定値に満たない場合、単セル入力は <code>#ERROR!</code>（<code>IFERROR</code> で扱えます）、範囲入力はその行だけ <code>#LEVEL …</code> という文字列になります。</li>
-    <li>0〜3 を指定すると町丁目まで、8 を指定すると番地・号まで正規化を試みます。4〜7 は 8 と同じです。</li>
+    <li>カスタム関数は結果のレベルが指定値に満たない場合、単セル入力は <code>#ERROR!</code>（<code>IFERROR</code> で扱えます）、範囲入力はその行だけ <code>#LEVEL …</code> という文字列になります。</li>
+    <li>メニューの一括処理にはしきい値が無く、到達レベルを隣の列に書きます。</li>
   </ul>
 
   <h2>出力</h2>
@@ -118,11 +112,11 @@
 東京都新宿区西新宿二丁目8-1 都庁第一本庁舎</pre>
 
   <h2>注意</h2>
-  <div class="note">1 回の呼び出しは 30 秒までです。大量の住所は、レベル 3 を指定するか、範囲を数百行ずつに分けてください。<code>#TIMEOUT</code> が出た行は未処理です。</div>
+  <div class="note">カスタム関数の 1 回の呼び出しは 30 秒までです。大量の住所は範囲を数百行ずつに分けるか、メニューの一括処理（6 分まで）を使ってください。<code>#TIMEOUT</code> が出た行は未処理です。</div>
   <ul>
     <li>データの整備状況により、住居表示が実施されている町丁目でもレベル 8 にならない住所があります（東京都区部の一部など）。</li>
-    <li>結果はスプレッドシート側で引数ごとにキャッシュされ、住所データが更新されても自動では再計算されません。</li>
-    <li>住所データは提供者の配信サーバー（{{apiHost}}）から取得します。セルの住所文字列そのものは送信しません。詳細は<a href="{{siteUrl}}privacy.html">プライバシーポリシー</a>を参照してください。</li>
+    <li>カスタム関数の結果はスプレッドシート側で引数ごとにキャッシュされ、住所データが更新されても自動では再計算されません。</li>
+    <li>住所データは提供者の配信サーバー（{{apiHost}}）から取得します。セルの住所文字列そのものは送信しません。ライセンスの照合には Google アカウントの識別子（ユーザー ID）を使い、メールアドレスは読み取りません。詳細は<a href="{{siteUrl}}privacy.html">プライバシーポリシー</a>を参照してください。</li>
   </ul>
 
   <h2>リンク</h2>
@@ -148,11 +142,22 @@
       var input = document.getElementById('license-key')
       var save = document.getElementById('license-save')
       var clear = document.getElementById('license-clear')
+      var purchase = document.getElementById('purchase-link')
+      var user = document.getElementById('license-user')
 
       function render(s) {
         box.className = 'license ' + (s.licensed ? 'ok' : '')
+        // 購入リンクには自分のアカウントの識別子が付く（決済完了ページがそのアカウント用のキーを出す）
+        purchase.href = s.purchaseUrl
+        if (s.userId) {
+          user.hidden = false
+          user.textContent = 'ユーザー ID: ' + s.userId + '（お問い合わせの際にお知らせください）'
+        } else {
+          user.hidden = false
+          user.textContent = 'Google アカウントを確認できませんでした。アドオンの権限を確認（再認可）してください。'
+        }
         if (s.licensed) {
-          status.textContent = 'ライセンス登録済み: ' + s.maskedKey + (s.source === 'document' ? '（このスプレッドシート）' : '')
+          status.textContent = 'ライセンス登録済み: ' + s.maskedKey
           input.value = ''
           input.placeholder = '別のキーに変更する場合は入力'
           clear.hidden = false

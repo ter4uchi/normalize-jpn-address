@@ -12,14 +12,15 @@
     "open": "clasp open",
     "logs": "clasp logs",
     "check:api": "node scripts/check-api.mjs",
-    "license:issue": "node scripts/issue-license.mjs"
+    "license:issue": "node scripts/issue-license.mjs",
+    "deploy:site": "npm run build && wrangler pages deploy"
   },
   "engines": {
     "node": ">=20"
   },
   "license": "MIT",
   "nja": {
-    "apiEndpoint": "https://normalize-jpn-address.pizzabun-lab.com/api/ja",
+    "apiEndpoint": "https://normalize-jpn-address-data.pizzabunlab.com/api/ja",
     "upstreamEndpoint": "https://japanese-addresses-v2.geoloniamaps.com/api/ja",
     "globalName": "NJA"
   },
@@ -32,6 +33,7 @@
     "@types/google-apps-script": "^1.0.97",
     "@types/papaparse": "^5.3.15",
     "esbuild": "^0.25.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "wrangler": "^4.131.1"
   }
 }

@@ -18,6 +18,7 @@ import {
   createCacheService,
   createHtmlService,
   createPropertiesService,
+  createScriptApp,
   createSpreadsheetApp,
   createUrlFetchApp,
   createUtilities,
@@ -36,7 +37,7 @@ const pkg = JSON.parse(
  * テストが住所データを取りに行く先。
  * 既定は Geolonia の公開 API（nja.upstreamEndpoint）。自前配信（nja.apiEndpoint）を
  * 試すときは環境変数 NJA_TEST_API_ENDPOINT で指定する:
- *   NJA_TEST_API_ENDPOINT=https://normalize-jpn-address.pizzabun-lab.com/api/ja npm test
+ *   NJA_TEST_API_ENDPOINT=https://normalize-jpn-address-data.pizzabunlab.com/api/ja npm test
  * .cache/http/ は URL ごとにキャッシュされるので、取得先を変えると初回は再取得になる。
  */
 export const TEST_API_ENDPOINT =
@@ -44,9 +45,11 @@ export const TEST_API_ENDPOINT =
 export const DEFAULT_API_ENDPOINT = pkg.nja.apiEndpoint
 export const UPSTREAM_API_ENDPOINT = pkg.nja.upstreamEndpoint
 
-/** ビルドと同じ秘密鍵で作った、有効なライセンスキー */
+/** テスト環境の利用者の Google アカウント（ID トークンの sub） */
+export const TEST_SUB = '123456789012345678901'
+/** ビルドと同じ秘密鍵で TEST_SUB 用に作った、有効なライセンスキー */
 export const LICENSE_SECRET = readLicenseSecret().secret
-export const VALID_LICENSE_KEY = issueLicenseKey(LICENSE_SECRET, 'TESTKEY2')
+export const VALID_LICENSE_KEY = issueLicenseKey(LICENSE_SECRET, TEST_SUB)
 
 const HOST_GLOBALS_THAT_MUST_BE_ABSENT = [
   'setTimeout',
@@ -73,9 +76,10 @@ const HOST_GLOBALS_THAT_MUST_BE_ABSENT = [
  * }} options
  *   scriptProperties: Script Properties の初期値。省略時は NJA_API_ENDPOINT に
  *   TEST_API_ENDPOINT を入れる。null を渡すと空（ビルド時の既定の取得先が使われる）。
- *   licensed: true なら UserProperties に有効なライセンスキーを入れる（既定 false）。
+ *   licensed: true なら UserProperties に TEST_SUB 用の有効なライセンスキーを入れる（既定 false）。
+ *   sub: ScriptApp.getIdentityToken() が返す sub（既定 TEST_SUB）。null で取得失敗を再現する。
  *   spreadsheet: SpreadsheetApp モックの初期状態（values / selection / alertResponse）。
- *   userProperties / documentProperties: それぞれの初期値（licensed より優先）。
+ *   userProperties: UserProperties の初期値（licensed より優先）。
  */
 export function createGasEnv({
   cacheStore,
@@ -83,8 +87,8 @@ export function createGasEnv({
   testOptions,
   scriptProperties,
   licensed = false,
+  sub = TEST_SUB,
   userProperties,
-  documentProperties,
   spreadsheet,
   logger = () => {},
 } = {}) {
@@ -102,12 +106,13 @@ export function createGasEnv({
         userProperties || (licensed ? { NJA_LICENSE_KEY: VALID_LICENSE_KEY } : {}),
       ),
     ),
-    document: new Map(Object.entries(documentProperties || {})),
+    document: new Map(),
   }
   const services = {
     UrlFetchApp: urlFetchApp || createUrlFetchApp({ log: fetchLog }),
     CacheService: createCacheService(cacheStore),
     PropertiesService: createPropertiesService(properties),
+    ScriptApp: createScriptApp({ sub }),
     Utilities: createUtilities(),
     SpreadsheetApp: createSpreadsheetApp(spreadsheet),
     HtmlService: createHtmlService(),

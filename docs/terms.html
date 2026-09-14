@@ -25,17 +25,18 @@
     <p>本規約は、TODO_PUBLISHER_NAME（以下「運営者」）が提供する Google スプレッドシート用アドオン「日本の住所正規化関数」（以下「本アドオン」）の利用条件を定めるものです。本アドオンをインストールまたは利用した時点で、本規約に同意したものとみなします。</p>
 
     <h2>1. 提供内容</h2>
-    <p>本アドオンは、スプレッドシートのセルに入力された日本の住所を正規化するカスタム関数 <code>NORMALIZE_JPN_ADDRESS</code>（旧名 <code>NORMALZE_JPN_ADDRESS</code>）、位置情報を返す <code>NORMALIZE_JPN_ADDRESS_MAP</code> および <code>NORMALIZE_JPN_ADDRESS_LATLNG</code>、ならびに使い方とライセンスキーの登録画面を表示するサイドバーを提供します。</p>
+    <p>本アドオンは、スプレッドシートのセルに入力された日本の住所を正規化するカスタム関数 <code>NORMALIZE_JPN_ADDRESS</code>（旧名 <code>NORMALZE_JPN_ADDRESS</code>）、選択範囲を一括処理するメニュー、ならびに使い方とライセンスキーの登録画面を表示するサイドバーを提供します。</p>
     <ul>
-      <li><strong>無料機能</strong>: 町丁目まで（正規化レベル 0〜3）の正規化。メニュー「選択範囲を正規化」（町丁目まで）。</li>
-      <li><strong>ライセンス機能</strong>: 番地・号まで（レベル 4〜8）の正規化、<code>_MAP</code>、<code>_LATLNG</code>、メニュー「選択範囲を正規化」の番地・号までの処理、メニュー「選択範囲に地図リンクを付ける」。有効なライセンスキーの登録が必要です。</li>
+      <li><strong>無料機能</strong>: カスタム関数による町丁目まで（正規化レベル 0〜3）の正規化。メニュー「選択範囲を正規化」（町丁目まで）。</li>
+      <li><strong>ライセンス機能</strong>: メニュー「選択範囲を正規化」の番地・号までの処理、メニュー「選択範囲に地図リンクを付ける」、メニュー「選択範囲に緯度経度を付ける」。有効なライセンスキーの登録が必要です。</li>
     </ul>
 
     <h2>1-2. 料金とライセンスキー</h2>
     <ul>
       <li>ライセンスキーの価格は 500円（税込） で、購入は 1 回限りです（買い切り）。月額・年額の費用はありません。</li>
       <li>決済は Stripe, Inc. の決済ページで行います。運営者はクレジットカード番号を受け取りません。</li>
-      <li>キーは購入者本人の利用のために発行します。購入者は自身の Google アカウントで利用する複数のスプレッドシートに同じキーを登録できます。キーを第三者に譲渡・販売・公開することはできません。</li>
+      <li>キーは購入時に使用した Google アカウント専用に発行し、そのアカウントでのみ登録できます。購入者は自身の Google アカウントで利用するすべてのスプレッドシートでライセンス機能を使えます。キーを第三者に譲渡・販売・公開することはできません（他のアカウントでは登録できません）。</li>
+      <li>キーの発行にはアカウントの照合情報が必要なため、購入はアドオンのサイドバーにある購入リンクから行ってください。それ以外の経路で決済された場合、運営者は返金または手動での発行で対応します。</li>
       <li>ライセンス機能は、本アドオンの提供が続く限り追加費用なく利用できます。住所データの更新も含みます。</li>
       <li>運営者は、キーの不正使用（公開や大量共有など）が判明した場合、そのキーを無効化することがあります。</li>
     </ul>
@@ -50,7 +51,7 @@
     <h2>2. 第三者のソフトウェアとデータ</h2>
     <ul>
       <li>正規化処理には、Geolonia Inc. が MIT ライセンスで公開する <a href="https://github.com/geolonia/normalize-japanese-addresses">normalize-japanese-addresses</a> を利用しています。</li>
-      <li>住所データは、Geolonia Inc. が <a href="https://creativecommons.org/licenses/by/4.0/deed.ja">CC BY 4.0</a> で公開する <a href="https://github.com/geolonia/japanese-addresses-v2">Geolonia 住所データ v2</a> から運営者が生成し、運営者の配信サーバー（normalize-jpn-address.pizzabun-lab.com）から提供します。このデータは「アドレス・ベース・レジストリ」（デジタル庁）をもとに株式会社 Geolonia が作成したものです。</li>
+      <li>住所データは、Geolonia Inc. が <a href="https://creativecommons.org/licenses/by/4.0/deed.ja">CC BY 4.0</a> で公開する <a href="https://github.com/geolonia/japanese-addresses-v2">Geolonia 住所データ v2</a> から運営者が生成し、運営者の配信サーバー（normalize-jpn-address-data.pizzabunlab.com）から提供します。このデータは「アドレス・ベース・レジストリ」（デジタル庁）をもとに株式会社 Geolonia が作成したものです。</li>
       <li>配信サーバーの障害時には、取得先を一時的に Geolonia Inc. が公開する配信サーバー（japanese-addresses-v2.geoloniamaps.com）へ切り替えることがあります。</li>
       <li>運営者は配信サーバーの可用性を保証しません。運営者の判断により提供の停止や変更が行われることがあり、その場合、本アドオンは動作しなくなる可能性があります。</li>
     </ul>

@@ -17,6 +17,7 @@ import type { NormalizeResult } from '../node_modules/@geolonia/normalize-japane
 import { gasFetch, fetchStats, type FetchStats } from './gas-fetch'
 import {
   verifyLicenseKey as verifyWithSecret,
+  isGoogleSub,
   maskLicenseKey,
   normalizeLicenseKey,
 } from './license'
@@ -40,8 +41,10 @@ export type NjaGlobal = {
   /** Geolonia の公開 API（package.json の nja.upstreamEndpoint）。障害時の切り替え先 */
   upstreamApiEndpoint: string
   stats: FetchStats
-  /** ライセンスキーが正しい形式・署名か（通信しない） */
-  verifyLicenseKey: (key: unknown) => boolean
+  /** ライセンスキーが、この Google アカウント（sub）用に発行されたものか（通信しない） */
+  verifyLicenseKey: (sub: unknown, key: unknown) => boolean
+  /** Google の sub の形式か（数字だけ、最長 255 文字） */
+  isGoogleSub: (sub: unknown) => sub is string
   maskLicenseKey: (key: unknown) => string
   normalizeLicenseKey: (key: unknown) => string
   /** 購入ページ（site.config.json の purchaseUrl） */
@@ -98,8 +101,8 @@ export const apiEndpoint = resolvedApiEndpoint
 export const defaultApiEndpoint = __NJA_API_ENDPOINT__
 export const upstreamApiEndpoint = __NJA_UPSTREAM_ENDPOINT__
 export const stats = fetchStats
-export const verifyLicenseKey = (key: unknown): boolean =>
-  verifyWithSecret(__NJA_LICENSE_SECRET__, key)
-export { maskLicenseKey, normalizeLicenseKey }
+export const verifyLicenseKey = (sub: unknown, key: unknown): boolean =>
+  verifyWithSecret(__NJA_LICENSE_SECRET__, sub, key)
+export { isGoogleSub, maskLicenseKey, normalizeLicenseKey }
 export const purchaseUrl = __NJA_PURCHASE_URL__
 export const licenseSecretIsDev = __NJA_LICENSE_SECRET_IS_DEV__

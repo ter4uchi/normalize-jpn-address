@@ -6,6 +6,7 @@ import {
   TEST_API_ENDPOINT,
   UPSTREAM_API_ENDPOINT,
   LICENSE_SECRET,
+  TEST_SUB,
   VALID_LICENSE_KEY,
 } from './gas-env.mjs'
 import { createUrlFetchApp, liveHandler } from './gas-mocks.mjs'
@@ -13,8 +14,7 @@ import { issueLicenseKey, verifyLicenseKey } from '../scripts/license-core.mjs'
 
 const FN = 'NORMALIZE_JPN_ADDRESS'
 const OLD_FN = 'NORMALZE_JPN_ADDRESS'
-const MAP_FN = 'NORMALIZE_JPN_ADDRESS_MAP'
-const LATLNG_FN = 'NORMALIZE_JPN_ADDRESS_LATLNG'
+const MENU_ONLY = /メニュー「拡張機能 › 選択範囲を正規化」（ライセンス版）/
 const LEVEL_ERR = (got, required) =>
   `正規化レベルが不足しています（結果 ${got} < 指定 ${required}）`
 /** vm コンテキスト由来の配列は Array.prototype が別物なので、比較前に素の値へ戻す */
@@ -71,20 +71,12 @@ describe(FN, () => {
   const store = new Map()
   let env
   before(() => {
-    env = createGasEnv({ cacheStore: store, licensed: true })
+    env = createGasEnv({ cacheStore: store })
   })
 
   test('旧名 NORMALZE_JPN_ADDRESS でも同じ結果', () => {
-    assert.equal(env.call(OLD_FN, '岩手県盛岡市内丸10-1', 8), '岩手県盛岡市内丸10-1')
+    assert.equal(env.call(OLD_FN, '岩手県盛岡市内丸10-1', 3), '岩手県盛岡市内丸10-1')
     assert.equal(env.call(OLD_FN, ''), '')
-  })
-
-  test('レベル 8 を指定すると番地・号まで正規化する', () => {
-    assert.equal(env.call(FN, '岩手県盛岡市内丸10-1', 8), '岩手県盛岡市内丸10-1')
-    assert.equal(
-      env.call(FN, '大阪府大阪市北区梅田1-1-3', 8),
-      '大阪府大阪市北区梅田一丁目1-3',
-    )
   })
 
   test('既定（3）は町丁目まで。番地・号のデータが無い住所でも通る', () => {
@@ -93,14 +85,27 @@ describe(FN, () => {
       '東京都千代田区千代田1-1',
     )
     assert.equal(env.call(FN, '千代田区千代田1-1'), '東京都千代田区千代田1-1')
-    // 既定でも番地・号が残りとして連結されるので、出力の見た目は 8 と同じになることが多い
+    // 番地・号は「残り」として連結されるので、町丁目までの正規化でも見た目は番地込みになる
     assert.equal(env.call(FN, '岩手県盛岡市内丸10-1'), '岩手県盛岡市内丸10-1')
+    assert.equal(env.call(FN, '大阪府大阪市北区梅田1-1-3'), '大阪府大阪市北区梅田一丁目1-3')
   })
 
-  test('8 を指定してレベル不足なら例外（単セルは #ERROR! になる）', () => {
+  test('レベル 4〜8 はカスタム関数では使えず、メニューへの案内になる（ライセンスの有無によらない）', () => {
+    for (const level of [4, 8, '8']) {
+      assert.throws(() => env.call(FN, '岩手県盛岡市内丸10-1', level), MENU_ONLY)
+    }
+    // 範囲入力でも呼び出し全体がエラー（行ごとの文字列ではない）
+    assert.throws(() => env.call(FN, [['岩手県盛岡市内丸10-1']], 8), MENU_ONLY)
+    const licensed = createGasEnv({ cacheStore: store, licensed: true })
+    assert.throws(() => licensed.call(FN, '岩手県盛岡市内丸10-1', 8), MENU_ONLY)
+    // 判定に ID トークンもプロパティも要らないので、カスタム関数は ScriptApp に触らない
+    assert.equal(licensed.fetchLog.filter((c) => !c.url.includes('.json')).length, 0)
+  })
+
+  test('レベル不足なら例外（単セルは #ERROR! になる）', () => {
     assert.throws(
-      () => env.call(FN, '東京都千代田区千代田１−１', 8),
-      new RegExp(LEVEL_ERR(3, 8)),
+      () => env.call(FN, '千代田区', 3),
+      new RegExp(LEVEL_ERR(2, 3)),
     )
   })
 
@@ -131,14 +136,9 @@ describe(FN, () => {
   })
 
   test('第2引数の検証', () => {
-    assert.equal(env.call(FN, '岩手県盛岡市内丸10-1', '8'), '岩手県盛岡市内丸10-1')
+    assert.equal(env.call(FN, '岩手県盛岡市内丸10-1', '3'), '岩手県盛岡市内丸10-1')
     assert.equal(env.call(FN, '岩手県盛岡市内丸10-1', ''), '岩手県盛岡市内丸10-1')
-    // 4〜7 は 8 と同じ扱い（番地まで試み、閾値として比較）
-    assert.equal(env.call(FN, '岩手県盛岡市内丸10-1', 5), '岩手県盛岡市内丸10-1')
-    assert.throws(
-      () => env.call(FN, '東京都千代田区千代田１−１', 5),
-      new RegExp(LEVEL_ERR(3, 5)),
-    )
+    assert.equal(env.call(FN, '岩手県盛岡市内丸10-1', 0), '岩手県盛岡市内丸10-1')
     for (const bad of ['abc', 9, -1, 2.5, [[3]]]) {
       assert.throws(() => env.call(FN, '岩手県盛岡市内丸10-1', bad), /第2引数/)
     }
@@ -148,15 +148,15 @@ describe(FN, () => {
     const input = [
       ['大阪府大阪市北区梅田1-1-3'],
       [''],
-      ['東京都千代田区千代田１−１'],
+      ['千代田区'],
       ['存在しない住所です'],
       ['大阪府大阪市北区梅田1-1-3'], // 重複（メモ化される）
     ]
-    assert.deepEqual(plain(env.call(FN, input, 8)), [
+    assert.deepEqual(plain(env.call(FN, input, 3)), [
       ['大阪府大阪市北区梅田一丁目1-3'],
       [''],
-      [`#LEVEL ${LEVEL_ERR(3, 8)}`],
-      [`#LEVEL ${LEVEL_ERR(0, 8)}`],
+      [`#LEVEL ${LEVEL_ERR(2, 3)}`],
+      [`#LEVEL ${LEVEL_ERR(0, 3)}`],
       ['大阪府大阪市北区梅田一丁目1-3'],
     ])
   })
@@ -188,134 +188,83 @@ describe(FN, () => {
   })
 })
 
-describe('ライセンスと有料機能', () => {
+describe('ライセンス', () => {
   const store = new Map()
-  const MORIOKA = '岩手県盛岡市内丸10-1'
-  const MAP_URL = /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=39\.\d+%2C141\.\d+$/
+  const OTHER_SUB = '999999999999999999999'
+  const OTHER_KEY = issueLicenseKey(LICENSE_SECRET, OTHER_SUB)
 
-  test('キーの発行と検証: Node 側とアドオン側で一致する', () => {
+  test('キーの発行と検証: Node 側とアドオン側で一致し、sub に紐づく', () => {
     const env = createGasEnv({ cacheStore: store })
-    assert.ok(verifyLicenseKey(LICENSE_SECRET, VALID_LICENSE_KEY))
-    assert.ok(env.NJA.verifyLicenseKey(VALID_LICENSE_KEY))
     assert.match(VALID_LICENSE_KEY, /^NJA-[A-Z2-9]{5}-[A-Z2-9]{5}-[A-Z2-9]{5}-[A-Z2-9]{5}$/)
+    assert.ok(verifyLicenseKey(LICENSE_SECRET, TEST_SUB, VALID_LICENSE_KEY))
+    assert.ok(env.NJA.verifyLicenseKey(TEST_SUB, VALID_LICENSE_KEY))
     // 書式のゆれ（小文字、区切り無し、空白）は許容
-    assert.ok(env.NJA.verifyLicenseKey(VALID_LICENSE_KEY.toLowerCase()))
-    assert.ok(env.NJA.verifyLicenseKey(' ' + VALID_LICENSE_KEY.replace(/-/g, '') + ' '))
-    // 1 文字違い、別の秘密鍵、空は不可
+    assert.ok(env.NJA.verifyLicenseKey(TEST_SUB, VALID_LICENSE_KEY.toLowerCase()))
+    assert.ok(env.NJA.verifyLicenseKey(TEST_SUB, ' ' + VALID_LICENSE_KEY.replace(/-/g, '') + ' '))
+    // 別のアカウント（sub）では通らない。逆も同じ
+    assert.equal(env.NJA.verifyLicenseKey(OTHER_SUB, VALID_LICENSE_KEY), false)
+    assert.equal(env.NJA.verifyLicenseKey(TEST_SUB, OTHER_KEY), false)
+    assert.ok(env.NJA.verifyLicenseKey(OTHER_SUB, OTHER_KEY))
+    assert.notEqual(VALID_LICENSE_KEY, OTHER_KEY)
+    // 1 文字違い、別の秘密鍵、空、不正な sub は不可
     const tampered = VALID_LICENSE_KEY.slice(0, -1) + (VALID_LICENSE_KEY.endsWith('A') ? 'B' : 'A')
-    assert.equal(env.NJA.verifyLicenseKey(tampered), false)
-    assert.equal(env.NJA.verifyLicenseKey(issueLicenseKey('another-secret-another-secret-xx', 'TESTKEY2')), false)
-    assert.equal(env.NJA.verifyLicenseKey(''), false)
-    assert.equal(env.NJA.verifyLicenseKey(null), false)
-    // 10 個作って全部通る（ランダム ID）
-    for (let i = 0; i < 10; i++) {
-      assert.ok(env.NJA.verifyLicenseKey(issueLicenseKey(LICENSE_SECRET)))
-    }
-    assert.equal(env.NJA.maskLicenseKey(VALID_LICENSE_KEY), 'NJA-TESTK-•••••-•••••-' + VALID_LICENSE_KEY.slice(-5))
+    assert.equal(env.NJA.verifyLicenseKey(TEST_SUB, tampered), false)
+    assert.equal(env.NJA.verifyLicenseKey(TEST_SUB, issueLicenseKey('another-secret-another-secret-xx', TEST_SUB)), false)
+    assert.equal(env.NJA.verifyLicenseKey(TEST_SUB, ''), false)
+    assert.equal(env.NJA.verifyLicenseKey(TEST_SUB, null), false)
+    assert.equal(env.NJA.verifyLicenseKey('', VALID_LICENSE_KEY), false)
+    assert.equal(env.NJA.verifyLicenseKey('abc', VALID_LICENSE_KEY), false)
+    assert.throws(() => issueLicenseKey(LICENSE_SECRET, 'not-a-sub'), /sub は数字だけ/)
+    assert.equal(env.NJA.maskLicenseKey(VALID_LICENSE_KEY), 'NJA-' + VALID_LICENSE_KEY.slice(4, 9) + '-•••••-•••••-' + VALID_LICENSE_KEY.slice(-5))
   })
 
-  test('未ライセンス: レベル 3 までは使え、レベル 4 以上と位置情報関数は購入案内つきのエラー', () => {
+  test('状態: 未登録なら購入 URL に自分の sub が付く。ID トークンが取れなければ素の URL', () => {
     const env = createGasEnv({ cacheStore: store })
-    assert.equal(env.call(FN, MORIOKA), MORIOKA)
-    assert.equal(env.call(FN, MORIOKA, 3), MORIOKA)
-    for (const level of [4, 8, '8']) {
-      assert.throws(() => env.call(FN, MORIOKA, level), /ライセンスキーが必要です.*https:\/\//)
-    }
-    // 範囲入力でも呼び出し全体がエラー（行ごとの文字列ではない）
-    assert.throws(() => env.call(FN, [[MORIOKA]], 8), /ライセンスキーが必要です/)
-    assert.throws(() => env.call(MAP_FN, MORIOKA), /ライセンスキーが必要です/)
-    assert.throws(() => env.call(LATLNG_FN, MORIOKA), /ライセンスキーが必要です/)
-    // 未ライセンスの判定では通信しない
-    assert.equal(env.fetchLog.filter((c) => !c.url.includes('.json')).length, 0)
     const status = env.call('njaGetLicenseStatus')
     assert.equal(status.licensed, false)
-    assert.equal(status.source, null)
-    assert.equal(status.purchaseUrl, env.NJA.purchaseUrl)
+    assert.equal(status.maskedKey, '')
+    assert.equal(status.userId, TEST_SUB)
+    assert.equal(status.purchaseUrl, env.NJA.purchaseUrl + '?client_reference_id=' + TEST_SUB)
+
+    const noToken = createGasEnv({ cacheStore: store, sub: null })
+    const s2 = noToken.call('njaGetLicenseStatus')
+    assert.equal(s2.licensed, false)
+    assert.equal(s2.userId, '')
+    assert.equal(s2.purchaseUrl, env.NJA.purchaseUrl)
   })
 
-  test('ライセンスあり: UserProperties でも DocumentProperties でも有効', () => {
-    const byUser = createGasEnv({ cacheStore: store, licensed: true })
-    assert.equal(byUser.call(FN, MORIOKA, 8), MORIOKA)
-    assert.equal(byUser.call('njaGetLicenseStatus').source, 'user')
-
-    const byDocument = createGasEnv({
-      cacheStore: store,
-      documentProperties: { NJA_LICENSE_KEY: VALID_LICENSE_KEY },
-    })
-    assert.equal(byDocument.call(FN, MORIOKA, 8), MORIOKA)
-    assert.equal(byDocument.call('njaGetLicenseStatus').source, 'document')
-
-    // 不正なキーが保存されていても未ライセンス扱い
-    const bogus = createGasEnv({
-      cacheStore: store,
-      userProperties: { NJA_LICENSE_KEY: 'NJA-AAAAA-AAAAA-AAAAA-AAAAA' },
-    })
-    assert.throws(() => bogus.call(FN, MORIOKA, 8), /ライセンスキーが必要です/)
+  test('状態: 保存されたキーは、いまのアカウントの sub で照合される', () => {
+    const mine = createGasEnv({ cacheStore: store, licensed: true })
+    const status = mine.call('njaGetLicenseStatus')
+    assert.equal(status.licensed, true)
+    assert.equal(status.maskedKey, mine.NJA.maskLicenseKey(VALID_LICENSE_KEY))
+    // 他人のキーが入っていても（あり得ないが）未ライセンス扱い
+    const others = createGasEnv({ cacheStore: store, userProperties: { NJA_LICENSE_KEY: OTHER_KEY } })
+    assert.equal(others.call('njaGetLicenseStatus').licensed, false)
+    // 自分のキーでも、アカウントを確認できなければ未ライセンス扱い
+    const noToken = createGasEnv({ cacheStore: store, licensed: true, sub: null })
+    assert.equal(noToken.call('njaGetLicenseStatus').licensed, false)
   })
 
-  test('サイドバーからの登録・削除', () => {
+  test('サイドバーからの登録・削除: 自分の sub 用のキーだけ保存される', () => {
     const env = createGasEnv({ cacheStore: store })
-    assert.throws(() => env.call('njaSetLicenseKey', 'NJA-XXXXX'), /正しくありません/)
+    assert.throws(() => env.call('njaSetLicenseKey', 'NJA-XXXXX'), /正しくないか/)
+    assert.throws(() => env.call('njaSetLicenseKey', OTHER_KEY), /この Google アカウント用のキーではありません/)
+    assert.equal(env.properties.user.has('NJA_LICENSE_KEY'), false)
+
     const status = env.call('njaSetLicenseKey', ' ' + VALID_LICENSE_KEY.toLowerCase() + ' ')
     assert.equal(status.licensed, true)
-    assert.equal(status.source, 'user')
-    // 正規化した形で両方に保存される
-    const normalized = VALID_LICENSE_KEY.replace(/-/g, '')
-    assert.equal(env.properties.user.get('NJA_LICENSE_KEY'), normalized)
-    assert.equal(env.properties.document.get('NJA_LICENSE_KEY'), normalized)
-    // 同じ実行内で有料機能が使えるようになる
-    assert.equal(env.call(FN, MORIOKA, 8), MORIOKA)
+    // 正規化した形で UserProperties にだけ保存される
+    assert.equal(env.properties.user.get('NJA_LICENSE_KEY'), VALID_LICENSE_KEY.replace(/-/g, ''))
+    assert.equal(env.properties.document.size, 0)
 
     const cleared = env.call('njaClearLicenseKey')
     assert.equal(cleared.licensed, false)
     assert.equal(env.properties.user.has('NJA_LICENSE_KEY'), false)
-    assert.throws(() => env.call(FN, MORIOKA, 8), /ライセンスキーが必要です/)
-  })
 
-  test('地図 URL と緯度経度', () => {
-    const env = createGasEnv({ cacheStore: store, licensed: true })
-    const url = env.call(MAP_FN, MORIOKA)
-    assert.match(url, MAP_URL)
-    const latlng = plain(env.call(LATLNG_FN, MORIOKA))
-    assert.equal(latlng.length, 1)
-    assert.equal(latlng[0].length, 2)
-    assert.ok(latlng[0][0] > 39 && latlng[0][0] < 40, 'lat')
-    assert.ok(latlng[0][1] > 141 && latlng[0][1] < 142, 'lng')
-    assert.equal(url, `https://www.google.com/maps/search/?api=1&query=${latlng[0][0]}%2C${latlng[0][1]}`)
-
-    // 既定はレベル 8 なので、番地・号が無い住所はエラー。3 を指定すると町丁目の代表点
-    assert.throws(() => env.call(MAP_FN, '東京都千代田区千代田１−１'), /正規化レベルが不足/)
-    assert.match(env.call(MAP_FN, '東京都千代田区千代田１−１', 3), /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=35\./)
-
-    assert.equal(env.call(MAP_FN, ''), '')
-    assert.equal(env.call(LATLNG_FN, ''), '')
-  })
-
-  test('地図 URL と緯度経度の範囲入力', () => {
-    const env = createGasEnv({ cacheStore: store, licensed: true })
-    const column = [[MORIOKA], [''], ['存在しない住所です']]
-    const urls = plain(env.call(MAP_FN, column))
-    assert.equal(urls.length, 3)
-    assert.match(urls[0][0], MAP_URL)
-    assert.deepEqual(urls[1], [''])
-    assert.match(urls[2][0], /^#LEVEL /)
-
-    // 列入力 → 行ごとに 2 列。エラー行は 1 列目にメッセージ、2 列目は空
-    const latlng = plain(env.call(LATLNG_FN, column))
-    assert.equal(latlng.length, 3)
-    assert.equal(latlng[0].length, 2)
-    assert.equal(typeof latlng[0][0], 'number')
-    assert.deepEqual(latlng[1], ['', ''])
-    assert.match(latlng[2][0], /^#LEVEL /)
-    assert.equal(latlng[2][1], '')
-
-    // 行入力 → 2 行（緯度の行、経度の行）
-    const rows = plain(env.call(LATLNG_FN, [[MORIOKA, '']]))
-    assert.equal(rows.length, 2)
-    assert.equal(rows[0].length, 2)
-    assert.equal(typeof rows[0][0], 'number')
-    assert.equal(typeof rows[1][0], 'number')
-    assert.deepEqual([rows[0][1], rows[1][1]], ['', ''])
+    // ID トークンが取れない環境では登録できない（理由を示す）
+    const noToken = createGasEnv({ cacheStore: store, sub: null })
+    assert.throws(() => noToken.call('njaSetLicenseKey', VALID_LICENSE_KEY), /Google アカウントを確認できませんでした/)
   })
 })
 
@@ -333,7 +282,7 @@ describe('メニューの一括処理', () => {
     env.call('onOpen')
     assert.deepEqual(
       plain(env.sheet.menuItems.map((m) => m.fn)),
-      ['njaMenuNormalize', 'njaMenuMapLinks', 'njaShowSidebar'],
+      ['njaMenuNormalize', 'njaMenuMapLinks', 'njaMenuLatLng', 'njaShowSidebar'],
     )
   })
 
@@ -362,12 +311,39 @@ describe('メニューの一括処理', () => {
     assert.doesNotMatch(env.sheet.alerts[0], /ライセンス版では/)
   })
 
-  test('地図リンク: 未ライセンスは案内だけで書き込まない', () => {
-    const env = createGasEnv({ cacheStore: store, spreadsheet: { values, selection } })
-    env.call('njaMenuMapLinks')
-    assert.equal(env.sheet.alerts.length, 1)
-    assert.match(env.sheet.alerts[0], /ライセンス版の機能/)
-    assert.equal(cell(env, 2, 2), '')
+  test('地図リンクと緯度経度: 未ライセンスは購入案内（sub 付き URL）だけで書き込まない', () => {
+    for (const fn of ['njaMenuMapLinks', 'njaMenuLatLng']) {
+      const env = createGasEnv({ cacheStore: store, spreadsheet: { values, selection } })
+      env.call(fn)
+      assert.equal(env.sheet.alerts.length, 1)
+      assert.match(env.sheet.alerts[0], /ライセンス版の機能/)
+      assert.match(env.sheet.alerts[0], new RegExp('client_reference_id=' + TEST_SUB))
+      assert.equal(cell(env, 2, 2), '')
+    }
+    // 他人のキーが保存されていても同じ
+    const others = createGasEnv({
+      cacheStore: store,
+      spreadsheet: { values, selection },
+      userProperties: { NJA_LICENSE_KEY: issueLicenseKey(LICENSE_SECRET, '999999999999999999999') },
+    })
+    others.call('njaMenuMapLinks')
+    assert.match(others.sheet.alerts[0], /ライセンス版の機能/)
+  })
+
+  test('緯度経度（ライセンスあり）: 右隣 3 列に緯度、経度、到達レベル', () => {
+    const env = createGasEnv({ cacheStore: store, licensed: true, spreadsheet: { values, selection } })
+    env.call('njaMenuLatLng')
+    assert.ok(cell(env, 2, 2) > 39 && cell(env, 2, 2) < 40, 'lat')
+    assert.ok(cell(env, 2, 3) > 141 && cell(env, 2, 3) < 142, 'lng')
+    assert.equal(cell(env, 2, 4), 8)
+    assert.deepEqual([cell(env, 3, 2), cell(env, 3, 3), cell(env, 3, 4)], ['', '', ''])
+    assert.equal(cell(env, 4, 4), 3, '千代田は町丁目の代表点')
+    assert.ok(cell(env, 4, 2) > 35 && cell(env, 4, 2) < 36)
+    assert.match(cell(env, 5, 2), /^#ERROR .*位置情報がありません/)
+    assert.deepEqual([cell(env, 5, 3), cell(env, 5, 4)], ['', ''])
+    assert.equal(cell(env, 2, 5), '', '4 列目には書かない')
+    assert.match(env.sheet.alerts[0], /5 行を処理しました（エラー 1 行）/)
+    assert.match(env.sheet.alerts[0], /右隣の 3 列に緯度、経度、到達レベル/)
   })
 
   test('地図リンク（ライセンスあり）: リンク付きテキスト。町丁目までなら「概略」、判別不能はエラー文字列', () => {
@@ -435,8 +411,10 @@ describe('メニューの一括処理', () => {
 describe('I/O 層（UrlFetchApp + CacheService）', () => {
   test('2 回目の実行はキャッシュから読み、通信しない。大きい値は分割保存される', () => {
     const freshStore = new Map()
-    const first = createGasEnv({ cacheStore: freshStore, licensed: true })
-    assert.equal(first.call(FN, '岩手県盛岡市内丸10-1', 8), '岩手県盛岡市内丸10-1')
+    // 番地・号まで（メニューと同じ経路）。カスタム関数は町丁目までなので NJA を直接呼ぶ
+    const deep = (env) => env.NJA.normalize('岩手県盛岡市内丸10-1', { level: 8 })
+    const first = createGasEnv({ cacheStore: freshStore })
+    assert.equal(deep(first).level, 8)
     // ja.json + 盛岡市.json + 地番/住居表示の Range 取得（レベル 8 のときだけ）
     assert.ok(first.fetchLog.length >= 3, `network calls: ${first.fetchLog.length}`)
     const rangeCall = first.fetchLog.find((c) => c.headers.Range)
@@ -451,8 +429,8 @@ describe('I/O 層（UrlFetchApp + CacheService）', () => {
       assert.ok(Buffer.byteLength(v, 'utf8') <= 100 * 1024)
     }
 
-    const second = createGasEnv({ cacheStore: freshStore, licensed: true })
-    assert.equal(second.call(FN, '岩手県盛岡市内丸10-1', 8), '岩手県盛岡市内丸10-1')
+    const second = createGasEnv({ cacheStore: freshStore })
+    assert.equal(deep(second).level, 8)
     assert.equal(second.fetchLog.length, 0)
     assert.ok(second.NJA.stats.cacheHits >= 3)
   })
@@ -467,8 +445,8 @@ describe('I/O 層（UrlFetchApp + CacheService）', () => {
         return { ...res, status: 200 }
       },
     })
-    const env = createGasEnv({ cacheStore: new Map(), urlFetchApp, licensed: true })
-    assert.equal(env.call(FN, '岩手県盛岡市内丸10-1', 8), '岩手県盛岡市内丸10-1')
+    const env = createGasEnv({ cacheStore: new Map(), urlFetchApp })
+    assert.equal(env.NJA.normalize('岩手県盛岡市内丸10-1', { level: 8 }).level, 8)
     assert.ok(log.some((c) => c.headers.Range))
   })
 

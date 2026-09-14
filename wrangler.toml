@@ -1,0 +1,14 @@
+# Cloudflare Pages の設定。サイト（docs/）と決済完了ページ（functions/license/thanks.js）を
+# 1 つの Pages プロジェクトとして配信する。
+#
+#   初回:  npx wrangler login
+#          npx wrangler pages project create normalize-jpn-address --production-branch main
+#          npx wrangler pages secret put NJA_LICENSE_SECRET   # .license-secret と同じ値
+#          npx wrangler pages secret put STRIPE_SECRET_KEY    # Checkout Session 読み取りだけの制限付きキー
+#          ダッシュボードでカスタムドメイン normalize-jpn-address.pizzabunlab.com を接続
+#   配信:  npm run deploy:site   （npm run build で docs/ を作り直してから wrangler pages deploy）
+#
+# 住所データ（R2）は別ホスト normalize-jpn-address-data.pizzabunlab.com（README「住所データの配信」）。
+name = "normalize-jpn-address"
+pages_build_output_dir = "docs"
+compatibility_date = "2026-09-01"

@@ -12,9 +12,11 @@
  * 命名規則: 末尾が `_` の関数は Apps Script の非公開関数（セルやメニューから呼べない）。
  *
  * 無料と有料の境界:
- *   無料 … NORMALIZE_JPN_ADDRESS のレベル 0〜3（町丁目まで）。ライブラリの機能そのまま
- *   有料 … レベル 4〜8（番地・号まで）と、その座標を使う _MAP / _LATLNG
- *   判定はライセンスキー（Script の UserProperties / DocumentProperties）で行う。
+ *   無料 … カスタム関数 NORMALIZE_JPN_ADDRESS（レベル 0〜3、町丁目まで）。ライブラリの機能そのまま
+ *   有料 … メニューの一括処理のうち、番地・号までの正規化、地図リンク、緯度経度
+ *   カスタム関数にはライセンス判定を置かない。カスタム関数は利用者の権限なしで動くため
+ *   Google アカウントを確認できず、アカウント単位のライセンスと相性が悪い。
+ *   メニューとサイドバーは利用者の権限で動くので、ID トークンの sub とキーを突き合わせられる。
  */
 
 /** ビルド生成物 normalize-japanese-addresses.js が定義するグローバル（同期化済みの形） */
@@ -42,19 +44,20 @@ type Outcome =
   | { value: Cells; error?: undefined }
   | { value?: undefined; error: { code: RowErrorCode; message: string } }
 
-type LicenseSource = 'user' | 'document' | null
 type LicenseStatus = {
   licensed: boolean
-  source: LicenseSource
   maskedKey: string
+  /** 購入ページ。Google アカウントが分かっていれば client_reference_id に sub が付く */
   purchaseUrl: string
+  /** Google アカウントの sub（サポートや手動発行の照合用）。確認できなければ空 */
+  userId: string
 }
 
 /** 第2引数省略時の許容レベル（町丁目まで。市区町村ごとに 1 回の通信で済む） */
 const NJA_DEFAULT_LEVEL = 3
 /** ライブラリが返す最大レベル（番地・号） */
 const NJA_MAX_LEVEL = 8
-/** 町丁目レベル。これを超えるレベルは有料 */
+/** 町丁目レベル。カスタム関数はここまで。これを超える正規化はメニュー（有料）だけ */
 const NJA_TOWN_LEVEL = 3
 /** カスタム関数の上限（30 秒）に対して余裕を持たせた処理時間の目安 */
 const NJA_BATCH_BUDGET_MS = 22000
@@ -62,7 +65,7 @@ const NJA_BATCH_BUDGET_MS = 22000
 const NJA_MENU_BUDGET_MS = 5 * 60 * 1000
 /** メニュー処理で途中結果を書き込む間隔（行数）。上限で止まっても直前までは残る */
 const NJA_MENU_FLUSH_ROWS = 100
-/** ライセンスキーを保存するプロパティ名（UserProperties と DocumentProperties の両方） */
+/** ライセンスキーを保存する UserProperties のキー（利用者の Google アカウント単位） */
 const NJA_LICENSE_PROPERTY = 'NJA_LICENSE_KEY'
 
 // ---------------------------------------------------------------------------
@@ -70,18 +73,15 @@ const NJA_LICENSE_PROPERTY = 'NJA_LICENSE_KEY'
 // ---------------------------------------------------------------------------
 
 /**
- * 日本の住所を正規化します（Geolonia normalize-japanese-addresses を使用）。
+ * 日本の住所を町丁目まで正規化します（Geolonia normalize-japanese-addresses を使用）。番地・号までの正規化はメニュー「選択範囲を正規化」（ライセンス版）で行えます。
  *
  * @param {"東京都千代田区千代田１−１"} address 住所の文字列、または 1 列か 1 行のセル範囲（例: A2:A1000）。
- * @param {3} level 省略可。許容する最小の正規化レベル（0, 1, 2, 3, 8）。結果がこのレベルに満たない場合はエラー。省略時は 3（町丁目まで）。8 で番地・号まで（ライセンスが必要）。
+ * @param {3} level 省略可。許容する最小の正規化レベル（0〜3）。結果がこのレベルに満たない場合はエラー。省略時は 3（町丁目まで）。
  * @return 正規化した住所（都道府県 + 市区町村 + 町丁目 + 番地・号 + その他）。
  * @customfunction
  */
 function NORMALIZE_JPN_ADDRESS(address: CellArg, level?: CellArg): string | string[][] {
-  const required = njaParseLevel_(level, NJA_DEFAULT_LEVEL)
-  if (required > NJA_TOWN_LEVEL) {
-    njaRequireLicense_('番地・号までの正規化（レベル 4〜8）')
-  }
+  const required = njaParseLevel_(level)
   return njaRun_(address, required, njaFormatAddress_, 1) as string | string[][]
 }
 
@@ -89,7 +89,7 @@ function NORMALIZE_JPN_ADDRESS(address: CellArg, level?: CellArg): string | stri
  * NORMALIZE_JPN_ADDRESS の旧名です（綴りの誤りを修正する前の名前。互換のために残しています）。
  *
  * @param {"東京都千代田区千代田１−１"} address 住所の文字列、または 1 列か 1 行のセル範囲。
- * @param {3} level 省略可。許容する最小の正規化レベル。
+ * @param {3} level 省略可。許容する最小の正規化レベル（0〜3）。
  * @return 正規化した住所。
  * @customfunction
  */
@@ -97,52 +97,30 @@ function NORMALZE_JPN_ADDRESS(address: CellArg, level?: CellArg): string | strin
   return NORMALIZE_JPN_ADDRESS(address, level)
 }
 
-/**
- * 住所の位置を開く Google マップの URL を返します（ライセンスが必要）。=HYPERLINK(NORMALIZE_JPN_ADDRESS_MAP(A2), "地図") のように使います。
- *
- * @param {"岩手県盛岡市内丸10-1"} address 住所の文字列、または 1 列か 1 行のセル範囲。
- * @param {8} level 省略可。許容する最小の正規化レベル。省略時は 8（番地・号の位置）。3 を指定すると町丁目の代表点になります。
- * @return Google マップの URL。
- * @customfunction
- */
-function NORMALIZE_JPN_ADDRESS_MAP(address: CellArg, level?: CellArg): string | string[][] {
-  njaRequireLicense_('地図 URL（NORMALIZE_JPN_ADDRESS_MAP）')
-  const required = njaParseLevel_(level, NJA_MAX_LEVEL)
-  return njaRun_(address, required, njaFormatMapUrl_, 1) as string | string[][]
-}
-
-/**
- * 住所の緯度と経度を 2 列で返します（ライセンスが必要）。
- *
- * @param {"岩手県盛岡市内丸10-1"} address 住所の文字列、または 1 列か 1 行のセル範囲。
- * @param {8} level 省略可。許容する最小の正規化レベル。省略時は 8（番地・号の位置）。3 を指定すると町丁目の代表点になります。
- * @return 緯度, 経度（範囲入力では行ごとに 2 列）。
- * @customfunction
- */
-function NORMALIZE_JPN_ADDRESS_LATLNG(
-  address: CellArg,
-  level?: CellArg,
-): string | Array<Array<string | number>> {
-  njaRequireLicense_('緯度経度（NORMALIZE_JPN_ADDRESS_LATLNG）')
-  const required = njaParseLevel_(level, NJA_MAX_LEVEL)
-  return njaRun_(address, required, njaFormatLatLng_, 2)
-}
-
 // ---------------------------------------------------------------------------
 // 引数の解釈
 // ---------------------------------------------------------------------------
 
-function njaParseLevel_(level: CellArg, defaultLevel: number): number {
+/**
+ * カスタム関数の第2引数。0〜3 だけを受け付ける。
+ * 4〜8 は書式としては正しいので、エラーではなくメニューへの案内にする。
+ */
+function njaParseLevel_(level: CellArg): number {
   if (level === undefined || level === null || level === '') {
-    return defaultLevel
+    return NJA_DEFAULT_LEVEL
   }
   if (Array.isArray(level)) {
     throw new Error('第2引数（level）には範囲ではなく数値を指定してください')
   }
   const n = typeof level === 'number' ? level : Number(String(level).trim())
   if (!isFinite(n) || Math.floor(n) !== n || n < 0 || n > NJA_MAX_LEVEL) {
+    throw new Error('第2引数（level）は 0〜3 の整数で指定してください')
+  }
+  if (n > NJA_TOWN_LEVEL) {
     throw new Error(
-      '第2引数（level）は 0〜8 の整数で指定してください（意味を持つ値は 0, 1, 2, 3, 8）',
+      '番地・号までの正規化（レベル ' +
+        n +
+        '）は、メニュー「拡張機能 › 選択範囲を正規化」（ライセンス版）で行えます。数式では 0〜3 を指定してください',
     )
   }
   return n
@@ -281,6 +259,12 @@ function njaFormatMapUrlWithLevel_(result: NormalizeResult): Cells {
   return [njaFormatMapUrl_(result)[0], result.level]
 }
 
+/** メニュー用: 緯度、経度、到達レベル */
+function njaFormatLatLngWithLevel_(result: NormalizeResult): Cells {
+  const p = njaFormatLatLng_(result)
+  return [p[0], p[1], result.level]
+}
+
 /** 範囲入力の行に埋めるエラー表記（Sheets のエラーではなく文字列） */
 function njaRowError_(code: RowErrorCode, message: string): string {
   return '#' + code + ' ' + message
@@ -397,9 +381,18 @@ function njaMenuBudgetMs_(): number {
 // メニューからの一括処理
 // ---------------------------------------------------------------------------
 
-type MenuMode = 'normalize' | 'map'
+type MenuMode = 'normalize' | 'map' | 'latlng'
 
-/** メニュー「選択範囲を正規化」: 右隣 2 列に住所とレベルを書く */
+/** モードごとの設定。cellWidth は内部で持つセル数、width は実際に書く列数（地図は 1 列のリンク） */
+const NJA_MENU_MODES: {
+  [M in MenuMode]: { format: Formatter; cellWidth: number; width: number; label: string }
+} = {
+  normalize: { format: njaFormatAddressWithLevel_, cellWidth: 2, width: 2, label: '正規化した住所と到達レベル' },
+  map: { format: njaFormatMapUrlWithLevel_, cellWidth: 2, width: 1, label: '地図リンク' },
+  latlng: { format: njaFormatLatLngWithLevel_, cellWidth: 3, width: 3, label: '緯度、経度、到達レベル' },
+}
+
+/** メニュー「選択範囲を正規化」: 右隣 2 列に住所とレベルを書く（無料。ライセンスがあれば番地・号まで） */
 function njaMenuNormalize(): void {
   njaMenuRun_('normalize')
 }
@@ -409,10 +402,15 @@ function njaMenuMapLinks(): void {
   njaMenuRun_('map')
 }
 
+/** メニュー「選択範囲に緯度経度を付ける」: 右隣 3 列に緯度、経度、レベルを書く（ライセンス） */
+function njaMenuLatLng(): void {
+  njaMenuRun_('latlng')
+}
+
 /**
  * 選択した 1 列の住所を処理し、右隣の列に結果を書く。
  * カスタム関数と違い、しきい値は設けず「できるところまで」正規化して到達レベルを併記する。
- * ライセンスがあれば番地・号まで、無ければ町丁目まで試みる（地図はライセンス必須）。
+ * ライセンスがあれば番地・号まで、無ければ町丁目まで試みる（地図と緯度経度はライセンス必須）。
  * NJA_MENU_FLUSH_ROWS 行ごとに書き込むので、実行時間の上限で止まっても直前までは残る。
  */
 function njaMenuRun_(mode: MenuMode): void {
@@ -423,9 +421,9 @@ function njaMenuRun_(mode: MenuMode): void {
     return
   }
   const license = njaLicenseStatus_()
-  if (mode === 'map' && !license.licensed) {
+  if (mode !== 'normalize' && !license.licensed) {
     ui.alert(
-      '地図リンクはライセンス版の機能です',
+      '地図リンクと緯度経度はライセンス版の機能です',
       '「使い方とライセンス」からキーを登録してください。\n購入: ' + license.purchaseUrl,
       ui.ButtonSet.OK,
     )
@@ -436,7 +434,7 @@ function njaMenuRun_(mode: MenuMode): void {
   const row = selection.getRow()
   const column = selection.getColumn()
   const rows = selection.getNumRows()
-  const width = mode === 'normalize' ? 2 : 1
+  const { format, cellWidth, width, label } = NJA_MENU_MODES[mode]
   const target = sheet.getRange(row, column + 1, rows, width)
   const hasExisting = target
     .getValues()
@@ -453,7 +451,6 @@ function njaMenuRun_(mode: MenuMode): void {
   }
 
   const libraryLevel = license.licensed ? NJA_MAX_LEVEL : NJA_TOWN_LEVEL
-  const format = mode === 'normalize' ? njaFormatAddressWithLevel_ : njaFormatMapUrlWithLevel_
   const inputs = selection.getValues().map((line) => line[0] as CellValue)
   const budgetMs = njaMenuBudgetMs_()
   const started = Date.now()
@@ -468,10 +465,10 @@ function njaMenuRun_(mode: MenuMode): void {
       return
     }
     const out = sheet.getRange(row + pendingStart, column + 1, pending.length, width)
-    if (mode === 'normalize') {
-      out.setValues(pending)
-    } else {
+    if (mode === 'map') {
       out.setRichTextValues(pending.map((cells) => [njaMapLinkCell_(cells)]))
+    } else {
+      out.setValues(pending)
     }
     pendingStart += pending.length
     pending = []
@@ -484,12 +481,12 @@ function njaMenuRun_(mode: MenuMode): void {
     const text = njaToText_(inputs[i])
     let cells: Cells
     if (text === '') {
-      cells = njaPad_([], 2)
+      cells = njaPad_([], cellWidth)
     } else if (Object.prototype.hasOwnProperty.call(memo, text)) {
       cells = memo[text]
     } else {
       const r = njaNormalizeOne_(text, 0, format, libraryLevel)
-      cells = r.error ? [njaRowError_(r.error.code, r.error.message), ''] : r.value
+      cells = njaPad_(r.error ? [njaRowError_(r.error.code, r.error.message)] : r.value, cellWidth)
       memo[text] = cells
     }
     if (text !== '' && typeof cells[0] === 'string' && cells[0].charAt(0) === '#') {
@@ -505,9 +502,7 @@ function njaMenuRun_(mode: MenuMode): void {
 
   const summary =
     processed + ' 行を処理しました（エラー ' + errors + ' 行）。' +
-    (mode === 'normalize'
-      ? '右隣の 2 列に正規化した住所と到達レベルを書きました。'
-      : '右隣の列に地図リンクを書きました。') +
+    '右隣の ' + width + ' 列に' + label + 'を書きました。' +
     (license.licensed ? '' : '\nライセンス版では番地・号まで正規化されます。')
   if (processed < inputs.length) {
     ui.alert(
@@ -540,50 +535,75 @@ function njaMapLinkCell_(cells: Cells): GoogleAppsScript.Spreadsheet.RichTextVal
 // ---------------------------------------------------------------------------
 // ライセンス
 // ---------------------------------------------------------------------------
+//
+// キーは購入者の Google アカウント（ID トークンの sub）から導出されている。
+// ここでは「いまのアカウントの sub で同じ計算をして一致するか」だけを見る（NJA.verifyLicenseKey）。
+// この節の関数はすべて利用者の権限で動く文脈（メニュー、サイドバー、スクリプトエディタ）からしか
+// 呼ばない。カスタム関数からは ScriptApp.getIdentityToken() が使えない。
 
-/** 1 回の実行内での判定結果のメモ（プロパティの読み取りを繰り返さない） */
+/** 1 回の実行内での判定結果のメモ（ID トークンの取得とプロパティの読み取りを繰り返さない） */
 let njaLicenseMemo_: LicenseStatus | null = null
 
-/** 有料機能の入口。未ライセンスなら例外（単セルは #ERROR!、範囲も呼び出し全体がエラー） */
-function njaRequireLicense_(feature: string): void {
-  const status = njaLicenseStatus_()
-  if (!status.licensed) {
+/**
+ * いまの利用者の Google アカウントの sub。ID トークン（JWT）の payload から読む。
+ * 自分の実行文脈で Google から直接受け取ったトークンなので、署名検証は要らない。
+ * openid スコープが無い・認可されていないなどで取れなければ例外。
+ */
+function njaGoogleSub_(): string {
+  let token: string
+  try {
+    token = ScriptApp.getIdentityToken()
+  } catch (e) {
     throw new Error(
-      feature +
-        'にはライセンスキーが必要です。「拡張機能」メニューの「使い方とライセンス」からキーを登録してください。購入: ' +
-        status.purchaseUrl,
+      'Google アカウントを確認できませんでした。アドオンの権限を確認（再認可）してから、もう一度お試しください',
     )
   }
+  const parts = typeof token === 'string' ? token.split('.') : []
+  if (parts.length !== 3) {
+    throw new Error('Google アカウントを確認できませんでした（ID トークンの形式が不正です）')
+  }
+  let sub: unknown
+  try {
+    const json = Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[1])).getDataAsString()
+    sub = JSON.parse(json).sub
+  } catch (e) {
+    throw new Error('Google アカウントを確認できませんでした（ID トークンを読めません）')
+  }
+  if (!NJA.isGoogleSub(sub)) {
+    throw new Error('Google アカウントを確認できませんでした（sub がありません）')
+  }
+  return sub
+}
+
+/** 購入ページ。sub を client_reference_id に載せると、決済完了ページがそのアカウント用のキーを出す */
+function njaPurchaseUrl_(sub: string): string {
+  const base = NJA.purchaseUrl
+  return base + (base.indexOf('?') >= 0 ? '&' : '?') + 'client_reference_id=' + encodeURIComponent(sub)
 }
 
 function njaLicenseStatus_(): LicenseStatus {
   if (njaLicenseMemo_) {
     return njaLicenseMemo_
   }
-  let source: LicenseSource = null
-  let key = ''
-  const candidates: Array<[LicenseSource, () => GoogleAppsScript.Properties.Properties | null]> = [
-    ['user', () => PropertiesService.getUserProperties()],
-    ['document', () => PropertiesService.getDocumentProperties()],
-  ]
-  for (const [name, get] of candidates) {
-    try {
-      const props = get()
-      const value = props ? props.getProperty(NJA_LICENSE_PROPERTY) : null
-      if (value && NJA.verifyLicenseKey(value)) {
-        source = name
-        key = value
-        break
-      }
-    } catch (e) {
-      // 読めないストアは飛ばす（カスタム関数からは一部が使えない場合がある）
-    }
+  // アカウントを確認できなくても無料の範囲（メニューの町丁目まで）は動かす
+  let sub = ''
+  try {
+    sub = njaGoogleSub_()
+  } catch (e) {
+    sub = ''
   }
+  let key = ''
+  try {
+    key = PropertiesService.getUserProperties().getProperty(NJA_LICENSE_PROPERTY) || ''
+  } catch (e) {
+    key = ''
+  }
+  const licensed = sub !== '' && key !== '' && NJA.verifyLicenseKey(sub, key)
   njaLicenseMemo_ = {
-    licensed: source !== null,
-    source,
-    maskedKey: key ? NJA.maskLicenseKey(key) : '',
-    purchaseUrl: NJA.purchaseUrl,
+    licensed,
+    maskedKey: licensed ? NJA.maskLicenseKey(key) : '',
+    purchaseUrl: sub ? njaPurchaseUrl_(sub) : NJA.purchaseUrl,
+    userId: sub,
   }
   return njaLicenseMemo_
 }
@@ -595,52 +615,26 @@ function njaGetLicenseStatus(): LicenseStatus {
 }
 
 /**
- * サイドバー用: キーを検証して保存する。
- * UserProperties（この利用者のすべてのスプレッドシート）と DocumentProperties（このファイルの
- * 共同編集者）の両方に入れる。どちらかが書けなくても、書けた方で動く。
+ * サイドバー用: キーがこのアカウント用なら UserProperties に保存する。
+ * 他人のキーは sub が違うので値が一致せず、ここで弾かれる。
  */
 function njaSetLicenseKey(key: string): LicenseStatus {
   const normalized = NJA.normalizeLicenseKey(key)
-  if (!NJA.verifyLicenseKey(normalized)) {
-    throw new Error('ライセンスキーが正しくありません。購入時に表示されたキーをそのまま貼り付けてください')
+  const sub = njaGoogleSub_()
+  if (!NJA.verifyLicenseKey(sub, normalized)) {
+    throw new Error(
+      'ライセンスキーが正しくないか、この Google アカウント用のキーではありません。' +
+        '購入時に表示されたキーを、購入したときと同じアカウントで貼り付けてください',
+    )
   }
-  let saved = 0
-  for (const get of [
-    () => PropertiesService.getUserProperties(),
-    () => PropertiesService.getDocumentProperties(),
-  ]) {
-    try {
-      const props = get()
-      if (props) {
-        props.setProperty(NJA_LICENSE_PROPERTY, normalized)
-        saved++
-      }
-    } catch (e) {
-      // 片方だけでも保存できればよい
-    }
-  }
-  if (saved === 0) {
-    throw new Error('ライセンスキーを保存できませんでした。ページを再読み込みして再度お試しください')
-  }
+  PropertiesService.getUserProperties().setProperty(NJA_LICENSE_PROPERTY, normalized)
   njaLicenseMemo_ = null
   return njaLicenseStatus_()
 }
 
 /** サイドバー用: 保存したキーを消す */
 function njaClearLicenseKey(): LicenseStatus {
-  for (const get of [
-    () => PropertiesService.getUserProperties(),
-    () => PropertiesService.getDocumentProperties(),
-  ]) {
-    try {
-      const props = get()
-      if (props) {
-        props.deleteProperty(NJA_LICENSE_PROPERTY)
-      }
-    } catch (e) {
-      // 無視
-    }
-  }
+  PropertiesService.getUserProperties().deleteProperty(NJA_LICENSE_PROPERTY)
   njaLicenseMemo_ = null
   return njaLicenseStatus_()
 }
@@ -656,6 +650,7 @@ function onOpen(
     .createAddonMenu()
     .addItem('選択範囲を正規化', 'njaMenuNormalize')
     .addItem('選択範囲に地図リンクを付ける', 'njaMenuMapLinks')
+    .addItem('選択範囲に緯度経度を付ける', 'njaMenuLatLng')
     .addSeparator()
     .addItem('使い方とライセンス', 'njaShowSidebar')
     .addToUi()
@@ -677,8 +672,8 @@ function njaShowSidebar(): void {
 /** スクリプトエディタで実行し、ログで環境と結果を確認する */
 function njaSelfTest(): void {
   const samples: Array<[string, number]> = [
-    ['岩手県盛岡市内丸10-1', 8],
-    ['大阪府大阪市北区梅田1-1-3', 8],
+    ['岩手県盛岡市内丸10-1', 3],
+    ['大阪府大阪市北区梅田1-1-3', 3],
     ['東京都千代田区千代田１−１', 3],
     ['東京都新宿区西新宿2-8-1 都庁第一本庁舎', 3],
   ]
@@ -691,9 +686,9 @@ function njaSelfTest(): void {
   )
   const license = njaGetLicenseStatus()
   Logger.log(
-    'license: %s (source=%s, key=%s, secret=%s)',
+    'license: %s (userId=%s, key=%s, secret=%s)',
     license.licensed ? 'OK' : 'なし',
-    license.source,
+    license.userId || '(取得できず)',
     license.maskedKey,
     NJA.licenseSecretIsDev ? 'DEV' : 'production',
   )
@@ -707,10 +702,8 @@ function njaSelfTest(): void {
     }
     Logger.log('%s -> %s (%sms)', address, value, Date.now() - started)
   }
-  try {
-    Logger.log('map: %s', NORMALIZE_JPN_ADDRESS_MAP(samples[0][0]))
-  } catch (e) {
-    Logger.log('map: ERROR: %s', e instanceof Error ? e.message : String(e))
-  }
+  // 番地・号まで（メニューと同じ経路）
+  const deep = njaNormalizeOne_(samples[0][0], 0, njaFormatLatLngWithLevel_, NJA_MAX_LEVEL)
+  Logger.log('latlng(level 8): %s', deep.error ? 'ERROR: ' + deep.error.message : deep.value)
   Logger.log('network=%s cacheHits=%s', NJA.stats.network, NJA.stats.cacheHits)
 }
