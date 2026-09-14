@@ -21,32 +21,38 @@
 
   <main>
     <h1>プライバシーポリシー</h1>
-    <p class="muted">最終更新日: 2026-09-08</p>
+    <p class="muted">最終更新日: 2026-09-12</p>
     <p>TODO_PUBLISHER_NAME（以下「運営者」）は、Google スプレッドシート用アドオン「日本の住所正規化関数」（以下「本アドオン」）における情報の取り扱いについて、以下のとおり定めます。</p>
 
     <h2>1. 本アドオンが扱う情報</h2>
     <ul>
-      <li>本アドオンは、カスタム関数 <code>NORMALZE_JPN_ADDRESS</code> の引数として渡されたセルの値（住所文字列）を、正規化のために実行中のメモリ上で処理します。</li>
+      <li>本アドオンは、カスタム関数 <code>NORMALIZE_JPN_ADDRESS</code> の引数として渡されたセルの値、またはメニュー実行時に選択されていたセルの値（住所文字列）を、正規化のために実行中のメモリ上で処理します。メニュー実行時は、選択した列の右隣のセルに結果を書き込みます。それ以外のセルは読み書きしません。</li>
       <li>処理した住所文字列および正規化結果を、運営者が保存・収集・送信することはありません。運営者は本アドオンのためのサーバーを運用していません。</li>
       <li>本アドオンは、引数として渡されたセル以外のセル、スプレッドシートのファイル名や共有設定、利用者の Google アカウント情報（メールアドレス等）を読み取りません。</li>
+      <li>ライセンスキーを登録すると、キーは Google Apps Script のプロパティ（利用者のアカウントに紐づくユーザープロパティと、登録時に開いていたスプレッドシートに紐づくドキュメントプロパティ）に保存されます。これは Google のサーバー上にあり、運営者には送信されません。キーの検証はアドオン内で行い、通信しません。サイドバーの「削除」でいつでも消せます。</li>
     </ul>
+
+    <h2>1-2. 購入時の情報</h2>
+    <p>ライセンスキーの購入は Stripe, Inc. の決済ページで行います。氏名、メールアドレス、カード情報は Stripe が取り扱い、<a href="https://stripe.com/jp/privacy">Stripe のプライバシーポリシー</a>に従います。運営者は Stripe の管理画面で購入者のメールアドレスと決済の記録を閲覧できます。これは領収書の再発行、返金、キーの再表示への対応にのみ使い、他の目的には使いません。キーの表示ページは Cloudflare Workers 上で動き、決済の確認のために Stripe の API に決済セッション ID を送ります。</p>
 
     <h2>2. 外部サービスへの通信</h2>
     <ul>
-      <li>本アドオンは、正規化に必要な住所データを、Geolonia Inc. が公開する住所データ配信サーバー（japanese-addresses-v2.geoloniamaps.com）から取得します。</li>
+      <li>本アドオンは、正規化に必要な住所データを、運営者が配信する住所データサーバー（normalize-jpn-address.pizzabun-lab.com）から取得します。このデータは、Geolonia Inc. が公開する <a href="https://github.com/geolonia/japanese-addresses-v2">Geolonia 住所データ v2</a>（デジタル庁「アドレス・ベース・レジストリ」を元に整備されたもの）から生成した静的ファイルです。</li>
       <li>取得するのは、都道府県・市区町村の一覧、市区町村ごとの町丁目一覧、町丁目ごとの番地・号の一覧といった公開データです。</li>
       <li>この取得リクエストの URL には、入力された住所から判定した都道府県名・市区町村名、および町丁目に対応するデータの範囲が含まれます。入力された住所文字列そのもの、番地・号、建物名、スプレッドシートの内容は送信しません。</li>
-      <li>通信は Google のサーバー（Google Apps Script）から行われます。配信サーバー側でのアクセス記録の取り扱いは、Geolonia Inc. の定めに従います。</li>
+      <li>通信は Google のサーバー（Google Apps Script）から行われます。配信サーバーには利用者の IP アドレスや Google アカウントの情報は届きません。</li>
+      <li>配信サーバーは Cloudflare, Inc. のサービス（Cloudflare R2 および CDN）上で運用しています。運営者は配信サーバーのアクセス記録を保存せず、Cloudflare が通信の処理のために扱う情報は <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare のプライバシーポリシー</a>に従います。</li>
+      <li>配信サーバーに障害がある場合、運営者は取得先を一時的に Geolonia Inc. が公開する配信サーバー（japanese-addresses-v2.geoloniamaps.com）へ切り替えることがあります。送信される内容は上記と同じで、その間のアクセス記録の取り扱いは Geolonia Inc. の定めに従います。</li>
     </ul>
 
     <h2>3. キャッシュ</h2>
-    <p>取得した住所データ（Geolonia が公開するデータ）は、通信量を減らすために Google Apps Script の CacheService に最大 6 時間保存されます。利用者が入力した住所や正規化結果は保存しません。</p>
+    <p>取得した住所データは、通信量を減らすために Google Apps Script の CacheService に最大 6 時間保存されます。利用者が入力した住所や正規化結果は保存しません。</p>
 
     <h2>4. 要求する権限（OAuth スコープ）と用途</h2>
     <div class="table-wrap">
       <table>
         <tr><th>スコープ</th><th>用途</th></tr>
-        <tr><td><code>script.external_request</code></td><td>住所データ配信サーバーから住所データを取得するため。</td></tr>
+        <tr><td><code>script.external_request</code></td><td>住所データ配信サーバー（normalize-jpn-address.pizzabun-lab.com、切り替え時は japanese-addresses-v2.geoloniamaps.com）から住所データを取得するため。接続先はこの 2 つに限定しています。</td></tr>
         <tr><td><code>script.container.ui</code></td><td>「拡張機能」メニューと使い方のサイドバーを表示するため。</td></tr>
         <tr><td><code>spreadsheets.currentonly</code></td><td>開いているスプレッドシートでカスタム関数とメニューを動作させるため。セルの読み書きは、関数の引数と戻り値の範囲に限られます。</td></tr>
       </table>
@@ -70,7 +76,7 @@
 
   <footer class="site">
     <div class="inner">
-      提供: TODO_PUBLISHER_NAME / 更新日 2026-09-08<br>
+      提供: TODO_PUBLISHER_NAME / 更新日 2026-09-12<br>
       <a href="./">トップ</a> · <a href="terms.html">利用規約</a> · <a href="support.html">サポート</a>
     </div>
   </footer>

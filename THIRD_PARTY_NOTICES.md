@@ -6,7 +6,7 @@
 
 - 住所データ: [Geolonia 住所データ v2 (japanese-addresses-v2)](https://github.com/geolonia/japanese-addresses-v2)。
   デジタル庁「[アドレス・ベース・レジストリ](https://www.digital.go.jp/policies/base_registry_address)」を元に Geolonia Inc. が加工・配信しているものです。
-- 取得先: https://japanese-addresses-v2.geoloniamaps.com/api/ja
+- 取得先: https://normalize-jpn-address.pizzabun-lab.com/api/ja
 
 ## バンドルに含まれるパッケージ
 
